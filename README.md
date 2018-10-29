@@ -1,3 +1,5 @@
+# Not For Use currently, vaunrable to SQL injection, will be fixed before release
+
 # Stellar-Dashboard
 
 Scan the history archives of a stellar network, and create a dashboard to monitor all payments/trustline for an asset.
