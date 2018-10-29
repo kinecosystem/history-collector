@@ -4,12 +4,13 @@ services:
   ETL:
     image: kinecosystem/dashboard-etl:a7860d
     environment:
-      POSTGRES_PASSWORD: 11111
-      PYTHON_PASSWORD: 22222
-      ASSET_CODE: 'KIN'
-      ASSET_ISSUER: 'GCKG5WGBIJP74UDNRIRDFGENNIH5Y3KBI5IHREFAJKV4MQXLELT7EX6V'
+      POSTGRES_PASSWORD: '11111'
+      PYTHON_PASSWORD: '22222'
+      KIN_ISSUER: 'GCKG5WGBIJP74UDNRIRDFGENNIH5Y3KBI5IHREFAJKV4MQXLELT7EX6V'
       FIRST_FILE: '006bc03f'
       NETWORK_PASSPHRASE: 'Test SDF Network ; September 2015'
       MAX_RETRIES: 5
       BUCKET_NAME: 'history.stellar.org'
       CORE_DIRECTORY: 'prd/core-testnet/core_testnet_001/'
+      LOG_LEVEL: 'INFO'
+      APP_ID:
