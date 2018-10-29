@@ -1,21 +1,11 @@
 version: '3'
 
 services:
-  db:
-    image: postgres:11-alpine
-    ports:
-      - 5432:5432
-    environment:
-      POSTGRES_PASSWORD: 11111
-    volumes:
-      - ./postgres/postgres-data:/var/lib/postgresql/data
-
   ETL:
     image: kinecosystem/dashboard-etl:a7860d
     environment:
       POSTGRES_PASSWORD: 11111
       PYTHON_PASSWORD: 22222
-      GRAFANA_PASSWORD: 33333
       ASSET_CODE: 'KIN'
       ASSET_ISSUER: 'GCKG5WGBIJP74UDNRIRDFGENNIH5Y3KBI5IHREFAJKV4MQXLELT7EX6V'
       FIRST_FILE: '006bc03f'
@@ -23,14 +13,3 @@ services:
       MAX_RETRIES: 5
       BUCKET_NAME: 'history.stellar.org'
       CORE_DIRECTORY: 'prd/core-testnet/core_testnet_001/'
-
-  grafana:
-    image: grafana/grafana:5.0.0
-    ports:
-      - 80:3000
-    environment:
-      GF_AUTH_ANONYMOUS_ENABLED: "true"
-      GF_SECURITY_ADMIN_USER: "admin"
-      GF_SECURITY_ADMIN_PASSWORD: "admin"
-    volumes:
-      - ./grafana/grafana-data:/var/lib/grafana

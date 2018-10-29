@@ -7,7 +7,6 @@ import psycopg2
 
 # Get constants from env variables
 PYTHON_PASSWORD = os.environ['PYTHON_PASSWORD']
-GRAFANA_PASSWORD = os.environ['GRAFANA_PASSWORD']
 ASSET_CODE = os.environ['ASSET_CODE']
 FIRST_FILE = os.environ['FIRST_FILE']
 POSTGRES_PASSWORD = os.environ['POSTGRES_PASSWORD']
@@ -45,9 +44,7 @@ def main():
 
         # Create the users
         cur.execute('CREATE USER python;')
-        cur.execute('CREATE USER grafanareader')
         cur.execute("ALTER USER python WITH PASSWORD '{}'".format(PYTHON_PASSWORD))
-        cur.execute("ALTER USER grafanareader WITH PASSWORD '{}'".format(GRAFANA_PASSWORD))
 
         # Create the tables
         cur = setup_postgres('/' + ASSET_CODE.lower())
@@ -65,8 +62,6 @@ def main():
         cur.execute('GRANT INSERT on lastfile TO python')
         cur.execute('GRANT SELECT on lastfile TO python')
         cur.execute('GRANT UPDATE on lastfile to python')
-        cur.execute('GRANT SELECT on payments TO grafanareader')
-        cur.execute('GRANT SELECT on trustlines TO grafanareader')
 
         logging.info('Database created successfully.')
 
