@@ -136,12 +136,12 @@ def write_to_postgres(conn, cur, transactions, ledgers_dictionary, file_name):
                         pass
 
                     cur.execute("INSERT INTO payments VALUES (%s ,%s, %s, %s, %s,to_timestamp(%s))",
-                                source,
+                                (source,
                                 destination,
                                 amount,
                                 memo,
                                 tx_hash,
-                                timestamp)
+                                timestamp))
 
             # Operation type 0 = Create account
             elif operation['body']['type'] == 0:
@@ -154,13 +154,13 @@ def write_to_postgres(conn, cur, transactions, ledgers_dictionary, file_name):
                     pass
 
                 cur.execute("INSERT INTO creations VALUES (%s, %s, %s,to_timestamp(%s));",
-                            source,
+                            (source,
                             memo,
                             tx_hash,
-                            timestamp)
+                            timestamp))
 
     # Update the 'lastfile' entry in the database
-    cur.execute("UPDATE lastfile SET name = %s", file_name)
+    cur.execute("UPDATE lastfile SET name = %s", (file_name,))
     conn.commit()
     logging.info('Successfully wrote contents of file: {} to database'.format(file_name))
 
