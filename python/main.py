@@ -10,6 +10,7 @@ import os
 import time
 import logging
 import re
+import sys
 
 import boto3
 from botocore import UNSIGNED
@@ -36,6 +37,7 @@ if CORE_DIRECTORY != '' and CORE_DIRECTORY[-1] != '/':
 
 # 1-<uppercase|lowercase|digits>*4-anything
 APP_ID_REGEX = re.compile('^1-[A-z0-9]{4}-.*')
+
 
 def setup_s3():
     """Set up the s3 client with anonymous connection."""
@@ -107,7 +109,7 @@ def write_to_postgres(conn, cur, transactions, ledgers_dictionary, file_name):
             memo = transaction['tx']['memo']['text']
 
             # If the transaction is not from our app, skip it
-            if APP_ID_REGEX.match(memo) is not None:
+            if APP_ID is not None and APP_ID_REGEX.match(memo) is not None:
                 app = memo.split('-')[1]
                 if app != APP_ID:
                     continue
@@ -193,6 +195,11 @@ def main():
     """Main entry point."""
     # Initialize everything
     logging.basicConfig(level=LOG_LEVEL, format='%(asctime)s | %(levelname)s | %(message)s')
+    if APP_ID is not None:
+        if re.match('^[A-z0-9]{4}$', APP_ID) is None:
+            logging.error('APP ID is invalid')
+            sys.exit(1)
+
     conn = setup_postgres()
     cur = conn.cursor()
     file_sequence = get_last_file_sequence(conn, cur)
