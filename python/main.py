@@ -9,6 +9,7 @@ and write the relevant transactions to a database.
 import os
 import time
 import logging
+import re
 
 import boto3
 from botocore import UNSIGNED
@@ -32,6 +33,9 @@ CORE_DIRECTORY = os.environ.get('CORE_DIRECTORY', '')
 # Add trailing / to core directory
 if CORE_DIRECTORY != '' and CORE_DIRECTORY[-1] != '/':
     CORE_DIRECTORY += '/'
+
+# 1-<uppercase|lowercase|digits>*4-anything
+APP_ID_REGEX = re.compile('^1-[A-z0-9]{4}-.*')
 
 def setup_s3():
     """Set up the s3 client with anonymous connection."""
@@ -101,6 +105,13 @@ def write_to_postgres(conn, cur, transactions, ledgers_dictionary, file_name):
 
         for transaction in transaction_history_entry['txSet']['txs']:
             memo = transaction['tx']['memo']['text']
+
+            # If the transaction is not from our app, skip it
+            if APP_ID_REGEX.match(memo) is not None:
+                app = memo.split('-')[1]
+                if app != APP_ID:
+                    continue
+
             tx_hash = transaction['hash']
 
             operation = transaction['tx']['operations'][0]
