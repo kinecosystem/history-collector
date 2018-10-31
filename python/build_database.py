@@ -21,6 +21,12 @@ def setup_postgres(database=''):
     return cur
 
 
+def verify_file_sequence():
+    """Verifies that the file sequence is valid"""
+    file_sequence = int(FIRST_FILE,16) + 1
+    return file_sequence % 64
+
+
 def main():
     """Main entry point."""
     logging.basicConfig(level='INFO', format='%(asctime)s | %(levelname)s | %(message)s')
@@ -35,6 +41,10 @@ def main():
     else:
         logging.info('Using existing database instead of creating a new one')
         sys.exit(0)
+
+    if verify_file_sequence() != 0:
+        logging.error('First file selected is invalid')
+        sys.exit(1)
 
     # Connect to the postgres database
     try:
