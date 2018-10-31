@@ -109,9 +109,12 @@ def write_to_postgres(conn, cur, transactions, ledgers_dictionary, file_name):
             memo = transaction['tx']['memo']['text']
 
             # If the transaction is not from our app, skip it
-            if APP_ID is not None and APP_ID_REGEX.match(memo) is not None:
-                app = memo.split('-')[1]
-                if app != APP_ID:
+            if APP_ID is not None:
+                if APP_ID_REGEX.match(str(memo)) is not None:
+                    app = memo.split('-')[1]
+                    if app != APP_ID:
+                        continue
+                else:
                     continue
 
             tx_hash = transaction['hash']
@@ -146,6 +149,8 @@ def write_to_postgres(conn, cur, transactions, ledgers_dictionary, file_name):
             # Operation type 0 = Create account
             elif operation['body']['type'] == 0:
                 source = transaction['tx']['sourceAccount']['ed25519']
+                destination = operation['body']['createAccountOp']['destination']['ed25519']
+                balance = operation['body']['createAccountOp']['startingBalance']
 
                 # Override the tx source with the operation source if it exists
                 try:
@@ -153,11 +158,13 @@ def write_to_postgres(conn, cur, transactions, ledgers_dictionary, file_name):
                 except (KeyError, IndexError):
                     pass
 
-                cur.execute("INSERT INTO creations VALUES (%s, %s, %s,to_timestamp(%s));",
+                cur.execute("INSERT INTO creations VALUES (%s, %s, %s, %s, %s, to_timestamp(%s));",
                             (source,
-                            memo,
-                            tx_hash,
-                            timestamp))
+                             destination,
+                             balance,
+                             memo,
+                             tx_hash,
+                             timestamp))
 
     # Update the 'lastfile' entry in the database
     cur.execute("UPDATE lastfile SET name = %s", (file_name,))
