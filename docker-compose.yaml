@@ -5,6 +5,7 @@ services:
     image: kinecosystem/dashboard-etl:a7860d
     environment:
       POSTGRES_PASSWORD: '11111'
+      POSTGRES_HOST: ''
       PYTHON_PASSWORD: '22222'
       KIN_ISSUER: 'GCKG5WGBIJP74UDNRIRDFGENNIH5Y3KBI5IHREFAJKV4MQXLELT7EX6V'
       FIRST_FILE: '006bc03f'
