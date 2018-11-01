@@ -45,3 +45,6 @@ Logs can be accessed using
 ```bash
 $ sudo docker-compose logs
 ```
+
+## Demo:  
+You can test this service with the demo app, in the ```sample``` folder
