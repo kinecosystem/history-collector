@@ -1,4 +1,4 @@
-# Historry Collector
+# History Collector
 
 Scan the history archives of the kin blockchain, and create a database that contains payment and account creations.
 
