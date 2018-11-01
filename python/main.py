@@ -1,14 +1,16 @@
 """
 ETL for stellar history files.
 
-Script to download xdr files from a s3 bucket,
-unpack them, filter the transactions in them by a given asset,
+Script to download xdr files from an s3 bucket,
+unpack them, filter the transactions in them,
 and write the relevant transactions to a database.
 """
 
 import os
 import time
 import logging
+import re
+import sys
 
 import boto3
 from botocore import UNSIGNED
@@ -19,17 +21,22 @@ from xdrparser import parser
 
 # Get constants from env variables
 PYTHON_PASSWORD = os.environ['PYTHON_PASSWORD']
-ASSET_CODE = os.environ['ASSET_CODE']
-ASSET_TYPE = 'alphaNum' + '4' if len(ASSET_CODE) <= 4 else '12'
-ASSET_ISSUER = os.environ['ASSET_ISSUER']
+POSTGRES_HOST = os.environ['POSTGRES_HOST']
+KIN_ISSUER = os.environ['KIN_ISSUER']
 NETWORK_PASSPHARSE = os.environ['NETWORK_PASSPHRASE']
 MAX_RETRIES = int(os.environ['MAX_RETRIES'])
 BUCKET_NAME = os.environ['BUCKET_NAME']
+LOG_LEVEL = os.environ['LOG_LEVEL']
 
-try:
-    CORE_DIRECTORY = os.environ['CORE_DIRECTORY']
-except KeyError:
-    CORE_DIRECTORY = ''
+APP_ID = os.environ.get('APP_ID', None)
+CORE_DIRECTORY = os.environ.get('CORE_DIRECTORY', '')
+
+# Add trailing / to core directory
+if CORE_DIRECTORY != '' and CORE_DIRECTORY[-1] != '/':
+    CORE_DIRECTORY += '/'
+
+# 1-<uppercase|lowercase|digits>*4-anything
+APP_ID_REGEX = re.compile('^1-[A-z0-9]{4}-.*')
 
 
 def setup_s3():
@@ -41,8 +48,8 @@ def setup_s3():
 
 def setup_postgres():
     """Set up a connection to the postgres database using the user 'python'."""
-    conn = psycopg2.connect("postgresql://python:{}@db:5432/{}".format(PYTHON_PASSWORD, ASSET_CODE.lower()))
-    logging.info('Successfully connected to postgres database {}'.format(ASSET_CODE.lower()))
+    conn = psycopg2.connect("postgresql://python:{}@{}:5432/kin".format(PYTHON_PASSWORD, POSTGRES_HOST))
+    logging.info('Successfully connected to the database')
     return conn
 
 
@@ -61,7 +68,7 @@ def download_file(s3, file_name):
     # BUCKET_NAME/CORE_DIRECTORY/transactions/00/4c/93/
 
     # "ledger-004c93bf" > "00/4c/93/"
-    file_number = file_name.split('-')[1]
+    file_number = file_name.split('-')[-1]
     sub_directory = '/'.join(file_number[i:i + 2] for i in range(0, len(file_number), 2))
     sub_directory = sub_directory[:9]
 
@@ -93,55 +100,67 @@ def get_ledgers_dictionary(ledgers):
 
 
 def write_to_postgres(conn, cur, transactions, ledgers_dictionary, file_name):
-    """Filter payment/trust operations and write them to the database."""
+    """Filter payment/creation operations and write them to the database."""
     logging.info('Writing contents of file: {} to database'.format(file_name))
     for transaction_history_entry in transactions:
         timestamp = ledgers_dictionary.get(transaction_history_entry['ledgerSeq'])
 
         for transaction in transaction_history_entry['txSet']['txs']:
             memo = transaction['tx']['memo']['text']
+
+            # If the transaction is not from our app, skip it
+            if APP_ID is not None and APP_ID_REGEX.match(memo) is not None:
+                app = memo.split('-')[1]
+                if app != APP_ID:
+                    continue
+
             tx_hash = transaction['hash']
 
-            for operation in transaction['tx']['operations']:
-                # Operation type 1 = Payment
-                if operation['body']['type'] == 1:
-                    # Check if this is a payment for our asset
-                    if operation['body']['paymentOp']['asset'][ASSET_TYPE] is not None and \
-                                    operation['body']['paymentOp']['asset'][ASSET_TYPE]['assetCode'] == ASSET_CODE and \
-                                    operation['body']['paymentOp']['asset'][ASSET_TYPE]['issuer']['ed25519'] == ASSET_ISSUER:
-                        source = transaction['tx']['sourceAccount']['ed25519']
-                        destination = operation['body']['paymentOp']['destination']['ed25519']
-                        amount = operation['body']['paymentOp']['amount']
+            operation = transaction['tx']['operations'][0]
 
-                        # Override the tx source with the operation source if it exists
-                        try:
-                            source = operation['sourceAccount'][0]['ed25519']
-                        except (KeyError, IndexError):
-                            pass
+            # Operation type 1 = Payment
+            if operation['body']['type'] == 1:
+                # Check if this is a payment for our asset
+                if operation['body']['paymentOp']['asset']['alphaNum4'] is not None and \
+                                operation['body']['paymentOp']['asset']['alphaNum4']['assetCode'] == 'KIN' and \
+                                operation['body']['paymentOp']['asset']['alphaNum4']['issuer']['ed25519'] == KIN_ISSUER:
 
-                        cur.execute("INSERT INTO payments VALUES ('{}','{}',{},{},'{}',to_timestamp({}));".
-                                    format(source, destination, amount,
-                                           "'" + memo + "'" if memo is not None else 'NULL', tx_hash, timestamp))
+                    source = transaction['tx']['sourceAccount']['ed25519']
+                    destination = operation['body']['paymentOp']['destination']['ed25519']
+                    amount = operation['body']['paymentOp']['amount']
 
-                # Operation type 6 = Change Trust
-                elif operation['body']['type'] == 6:
-                    # Check if this is a trustline for our asset
-                    if operation['body']['changeTrustOp']['line'][ASSET_TYPE] is not None and \
-                                    operation['body']['changeTrustOp']['line'][ASSET_TYPE]['assetCode'] == ASSET_CODE and \
-                                    operation['body']['changeTrustOp']['line'][ASSET_TYPE]['issuer']['ed25519'] == ASSET_ISSUER:
-                        source = transaction['tx']['sourceAccount']['ed25519']
+                    # Override the tx source with the operation source if it exists
+                    try:
+                        source = operation['sourceAccount'][0]['ed25519']
+                    except (KeyError, IndexError):
+                        pass
 
-                        # Override the tx source with the operation source if it exists
-                        try:
-                            source = operation['sourceAccount'][0]['ed25519']
-                        except (KeyError, IndexError):
-                            pass
+                    cur.execute("INSERT INTO payments VALUES (%s ,%s, %s, %s, %s,to_timestamp(%s))",
+                                (source,
+                                destination,
+                                amount,
+                                memo,
+                                tx_hash,
+                                timestamp))
 
-                        cur.execute("INSERT INTO trustlines VALUES ('{}', {}, '{}',to_timestamp({}));"
-                                    .format(source,"'" + memo + "'" if memo is not None else 'NULL', tx_hash, timestamp))
+            # Operation type 0 = Create account
+            elif operation['body']['type'] == 0:
+                source = transaction['tx']['sourceAccount']['ed25519']
+
+                # Override the tx source with the operation source if it exists
+                try:
+                    source = operation['sourceAccount'][0]['ed25519']
+                except (KeyError, IndexError):
+                    pass
+
+                cur.execute("INSERT INTO creations VALUES (%s, %s, %s,to_timestamp(%s));",
+                            (source,
+                            memo,
+                            tx_hash,
+                            timestamp))
 
     # Update the 'lastfile' entry in the database
-    cur.execute("UPDATE lastfile SET name = '{}'".format(file_name))
+    cur.execute("UPDATE lastfile SET name = %s", (file_name,))
     conn.commit()
     logging.info('Successfully wrote contents of file: {} to database'.format(file_name))
 
@@ -175,7 +194,12 @@ def get_new_file_sequence(old_file_name):
 def main():
     """Main entry point."""
     # Initialize everything
-    logging.basicConfig(level='INFO', format='%(asctime)s | %(levelname)s | %(message)s')
+    logging.basicConfig(level=LOG_LEVEL, format='%(asctime)s | %(levelname)s | %(message)s')
+    if APP_ID is not None:
+        if re.match('^[A-z0-9]{4}$', APP_ID) is None:
+            logging.error('APP ID is invalid')
+            sys.exit(1)
+
     conn = setup_postgres()
     cur = conn.cursor()
     file_sequence = get_last_file_sequence(conn, cur)
