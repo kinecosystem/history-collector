@@ -1,17 +1,17 @@
 version: '3'
 
 services:
-  ETL:
-    image: kinecosystem/dashboard-etl:a7860d
+  history-etl:
+    image: kinecosystem/history-collector:3afea0a
     environment:
-      POSTGRES_PASSWORD: '11111'
+      POSTGRES_PASSWORD: ''
       POSTGRES_HOST: ''
-      PYTHON_PASSWORD: '22222'
-      KIN_ISSUER: 'GCKG5WGBIJP74UDNRIRDFGENNIH5Y3KBI5IHREFAJKV4MQXLELT7EX6V'
-      FIRST_FILE: '006bc03f'
-      NETWORK_PASSPHRASE: 'Test SDF Network ; September 2015'
+      PYTHON_PASSWORD: ''
+      KIN_ISSUER: 'GDF42M3IPERQCBLWFEZKQRK77JQ65SCKTU3CW36HZVCX7XX5A5QXZIVK'
+      FIRST_FILE: '0000003f'
+      NETWORK_PASSPHRASE: 'Public Global Kin Ecosystem Network ; June 2018'
       MAX_RETRIES: 5
-      BUCKET_NAME: 'history.stellar.org'
-      CORE_DIRECTORY: 'prd/core-testnet/core_testnet_001/'
+      BUCKET_NAME: 'stellar-core-ecosystem-6145'
+      CORE_DIRECTORY: ''
       LOG_LEVEL: 'INFO'
       APP_ID:

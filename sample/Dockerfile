@@ -1,10 +1,10 @@
 FROM python:3.5-alpine
 
 # Create the workdir
-RUN mkdir -p /opt/history-collector
+RUN mkdir -p /opt/history-sample
 
 # Set the workdir
-WORKDIR /opt/history-collector
+WORKDIR /opt/history-sample
 
 # Copy the pipfiles
 COPY Pipfile* ./
@@ -17,4 +17,6 @@ RUN pip install pipenv \
 # Copy the code
 COPY . .
 
-CMD pipenv run python build_database.py && pipenv run python main.py
+EXPOSE 3000
+
+CMD pipenv run python main.py

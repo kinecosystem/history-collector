@@ -53,7 +53,7 @@ def main():
         # Create the database
         cur.execute('CREATE DATABASE {};'.format('kin'))
 
-        # Create the users
+        # Create the user
         cur.execute('CREATE USER python;')
         cur.execute("ALTER USER python WITH PASSWORD '{}'".format(PYTHON_PASSWORD))
 
@@ -82,9 +82,11 @@ def main():
         # This is the name of the file that contains the first ledger to scan
         cur.execute("INSERT INTO lastfile VALUES(%s);", (FIRST_FILE,))
 
-        # Grant the users access to the database
+        # Grant the user access to the database
         cur.execute('GRANT INSERT on payments TO python')
         cur.execute('GRANT INSERT on creations TO python')
+        cur.execute('GRANT SELECT on payments TO python')
+        cur.execute('GRANT SELECT on creations TO python')
         cur.execute('GRANT INSERT on lastfile TO python')
         cur.execute('GRANT SELECT on lastfile TO python')
         cur.execute('GRANT UPDATE on lastfile to python')

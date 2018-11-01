@@ -1,0 +1,34 @@
+version: '3'
+
+services:
+  history-etl:
+    image: kinecosystem/history-collector:3afea0a
+    environment:
+      POSTGRES_PASSWORD: 'postgres'
+      POSTGRES_HOST: 'db'
+      PYTHON_PASSWORD: '1234'
+      KIN_ISSUER: 'GDF42M3IPERQCBLWFEZKQRK77JQ65SCKTU3CW36HZVCX7XX5A5QXZIVK'
+      FIRST_FILE: '00203dff'
+      NETWORK_PASSPHRASE: 'Public Global Kin Ecosystem Network ; June 2018'
+      MAX_RETRIES: 5
+      BUCKET_NAME: 'stellar-core-ecosystem-6145'
+      CORE_DIRECTORY: ''
+      LOG_LEVEL: 'INFO'
+      APP_ID:
+    depends_on:
+      - db
+
+  db:
+    image: postgres:11-alpine
+    environment:
+      POSTGRES_PASSWORD: 'postgres'
+    ports:
+      - 5432:5432
+
+  sample:
+    image: kinecosystem/history-collector-sample:3afea0a
+    ports:
+      - 3000:3000
+    depends_on:
+      - db
+      - history-etl
