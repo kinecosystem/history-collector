@@ -63,7 +63,7 @@ def get_last_file_sequence(conn, cur):
 
 
 def download_file(s3, file_name):
-    """Download the ledger-filename and transactions-filename files from the s3 bucket."""
+    """Download the files from the s3 bucket."""
     # File transactions-004c93bf.xdr.gz will be in:
     # BUCKET_NAME/CORE_DIRECTORY/transactions/00/4c/93/
 
@@ -72,7 +72,7 @@ def download_file(s3, file_name):
     sub_directory = '/'.join(file_number[i:i + 2] for i in range(0, len(file_number), 2))
     sub_directory = sub_directory[:9]
 
-    sub_directory = ('ledger/' if 'ledger' in file_name else 'transactions/') + sub_directory
+    sub_directory = file_name.split('-')[0] + '/' + sub_directory
 
     for attempt in range(MAX_RETRIES + 1):
         try:
@@ -99,13 +99,21 @@ def get_ledgers_dictionary(ledgers):
     return {ledger['header']['ledgerSeq']: ledger['header']['scpValue']['closeTime'] for ledger in ledgers}
 
 
-def write_to_postgres(conn, cur, transactions, ledgers_dictionary, file_name):
+def get_result_dictionary(results):
+    """Get a dictionary of a transaction hash and its result"""
+    return {result['txResultSet']['results'][0]['transactionHash']:
+            result['txResultSet']['results'][0]['result'] for result in results}
+
+
+def write_to_postgres(conn, cur, transactions, ledgers_dictionary, results_dictionary, file_name):
     """Filter payment/creation operations and write them to the database."""
     logging.info('Writing contents of file: {} to database'.format(file_name))
     for transaction_history_entry in transactions:
         timestamp = ledgers_dictionary.get(transaction_history_entry['ledgerSeq'])
 
         for transaction in transaction_history_entry['txSet']['txs']:
+            # Find the results of this tx based on its hash
+            results = results_dictionary.get(transaction['hash'])
             memo = transaction['tx']['memo']['text']
 
             # If the transaction is not from our app, skip it
@@ -118,53 +126,67 @@ def write_to_postgres(conn, cur, transactions, ledgers_dictionary, file_name):
                     continue
 
             tx_hash = transaction['hash']
+            tx_fee = transaction['tx']['fee']
+            tx_charged_fee = results['feeCharged']
+            tx_status = results['result']['code']  # txSUCCESS/FAILED/BAD_AUTH etc
 
-            operation = transaction['tx']['operations'][0]
+            for op_index, (tx_operation, result_operation) in enumerate(zip(transaction['tx']['operations'], results['result']['results'])):
+                # Operation type 1 = Payment
+                if tx_operation['body']['type'] == 1:
+                    # Check if this is a payment for our asset
+                    if tx_operation['body']['paymentOp']['asset']['alphaNum4'] is not None and \
+                                    tx_operation['body']['paymentOp']['asset']['alphaNum4']['assetCode'] == 'KIN' and \
+                                    tx_operation['body']['paymentOp']['asset']['alphaNum4']['issuer']['ed25519'] == KIN_ISSUER:
 
-            # Operation type 1 = Payment
-            if operation['body']['type'] == 1:
-                # Check if this is a payment for our asset
-                if operation['body']['paymentOp']['asset']['alphaNum4'] is not None and \
-                                operation['body']['paymentOp']['asset']['alphaNum4']['assetCode'] == 'KIN' and \
-                                operation['body']['paymentOp']['asset']['alphaNum4']['issuer']['ed25519'] == KIN_ISSUER:
+                        source = transaction['tx']['sourceAccount']['ed25519']
+                        destination = tx_operation['body']['paymentOp']['destination']['ed25519']
+                        amount = tx_operation['body']['paymentOp']['amount']
+                        op_status = result_operation['tr']['paymentResult']['code']
 
+                        # Override the tx source with the operation source if it exists
+                        try:
+                            source = tx_operation['sourceAccount'][0]['ed25519']
+                        except (KeyError, IndexError):
+                            pass
+
+                        cur.execute("INSERT INTO payments VALUES (%s ,%s, %s, %s, %s, %s, %s, %s, %s, %s, to_timestamp(%s))",
+                                    (source,
+                                     destination,
+                                     amount,
+                                     memo,
+                                     tx_fee,
+                                     tx_charged_fee,
+                                     op_index,
+                                     tx_status,
+                                     op_status,
+                                     tx_hash,
+                                     timestamp))
+
+                # Operation type 0 = Create account
+                elif tx_operation['body']['type'] == 0:
                     source = transaction['tx']['sourceAccount']['ed25519']
-                    destination = operation['body']['paymentOp']['destination']['ed25519']
-                    amount = operation['body']['paymentOp']['amount']
+                    destination = tx_operation['body']['createAccountOp']['destination']['ed25519']
+                    balance = tx_operation['body']['createAccountOp']['startingBalance']
+                    op_status = result_operation['tr']['createAccountResult']['code']
 
                     # Override the tx source with the operation source if it exists
                     try:
-                        source = operation['sourceAccount'][0]['ed25519']
+                        source = tx_operation['sourceAccount'][0]['ed25519']
                     except (KeyError, IndexError):
                         pass
 
-                    cur.execute("INSERT INTO payments VALUES (%s ,%s, %s, %s, %s,to_timestamp(%s))",
+                    cur.execute("INSERT INTO creations VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, to_timestamp(%s));",
                                 (source,
-                                destination,
-                                amount,
-                                memo,
-                                tx_hash,
-                                timestamp))
-
-            # Operation type 0 = Create account
-            elif operation['body']['type'] == 0:
-                source = transaction['tx']['sourceAccount']['ed25519']
-                destination = operation['body']['createAccountOp']['destination']['ed25519']
-                balance = operation['body']['createAccountOp']['startingBalance']
-
-                # Override the tx source with the operation source if it exists
-                try:
-                    source = operation['sourceAccount'][0]['ed25519']
-                except (KeyError, IndexError):
-                    pass
-
-                cur.execute("INSERT INTO creations VALUES (%s, %s, %s, %s, %s, to_timestamp(%s));",
-                            (source,
-                             destination,
-                             balance,
-                             memo,
-                             tx_hash,
-                             timestamp))
+                                 destination,
+                                 balance,
+                                 memo,
+                                 tx_fee,
+                                 tx_charged_fee,
+                                 op_index,
+                                 tx_status,
+                                 op_status,
+                                 tx_hash,
+                                 timestamp))
 
     # Update the 'lastfile' entry in the database
     cur.execute("UPDATE lastfile SET name = %s", (file_name,))
@@ -216,19 +238,24 @@ def main():
         # Download the files from S3
         download_file(s3, 'ledger-' + file_sequence)
         download_file(s3, 'transactions-' + file_sequence)
+        download_file(s3, 'results-' + file_sequence)
 
         # Unpack the files
+        results = parser.parse('results-{}.xdr.gz'.format(file_sequence))
         ledgers = parser.parse('ledger-{}.xdr.gz'.format(file_sequence))
         transactions = parser.parse('transactions-{}.xdr.gz'.format(file_sequence),
                                     with_hash=True, network_id=NETWORK_PASSPHARSE)
 
         # Get a ledger:closeTime dictionary
         ledgers_dictionary = get_ledgers_dictionary(ledgers)
+        # Get a txHash:txResult dictionary
+        results_dictionary = get_result_dictionary(results)
 
         # Remove the files from storage
         logging.info('Removing downloaded files.')
         os.remove('ledger-{}.xdr.gz'.format(file_sequence))
         os.remove('transactions-{}.xdr.gz'.format(file_sequence))
+        os.remove('results-{}.xdr.gz'.format(file_sequence))
 
         # Write the data to the postgres database
         write_to_postgres(conn, cur, transactions, ledgers_dictionary, file_sequence)
