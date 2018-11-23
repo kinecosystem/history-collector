@@ -101,8 +101,17 @@ def get_ledgers_dictionary(ledgers):
 
 def get_result_dictionary(results):
     """Get a dictionary of a transaction hash and its result"""
-    return {result['txResultSet']['results'][0]['transactionHash']:
-            result['txResultSet']['results'][0]['result'] for result in results}
+    #return {result['txResultSet']['results'][0]['transactionHash']:
+    #        result['txResultSet']['results'][0]['result'] for result in results}
+
+    results_dict = {}
+    for result in results:
+        for tx_result in result['txResultSet']['results']:
+            results_dict[tx_result['transactionHash']] = tx_result['result']
+
+    return results_dict
+
+
 
 
 def write_to_postgres(conn, cur, transactions, ledgers_dictionary, results_dictionary, file_name):
@@ -258,7 +267,7 @@ def main():
         os.remove('results-{}.xdr.gz'.format(file_sequence))
 
         # Write the data to the postgres database
-        write_to_postgres(conn, cur, transactions, ledgers_dictionary, file_sequence)
+        write_to_postgres(conn, cur, transactions, ledgers_dictionary, results_dictionary, file_sequence)
 
         # Get the name of the next file I should work on
         file_sequence = get_new_file_sequence(file_sequence)
