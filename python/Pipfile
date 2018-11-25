@@ -9,7 +9,7 @@ python_version = "3.5"
 [packages]
 "boto3" = "==1.7.54"
 "psycopg2" = "==2.7.5"
-xdrparser = "==1.2.0"
+xdrparser = "==1.2.1"
 
 [dev-packages]
 pylint = "*"
