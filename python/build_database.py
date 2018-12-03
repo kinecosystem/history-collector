@@ -65,7 +65,12 @@ def main():
                     'destination varchar(56) not NULL,'
                     'amount FLOAT not NULL,'
                     'memo_text varchar(28),'
-                    'hash varchar(64) not NULL PRIMARY KEY,'
+                    'fee INT not NULL,'
+                    'fee_charged INT not NULL,'
+                    'operation_index INT not NULL,'
+                    'tx_status text,'
+                    'op_status text,'
+                    'hash varchar(64) not NULL,'
                     'time TIMESTAMP not NULL);')
 
         cur.execute('CREATE TABLE creations('
@@ -73,7 +78,12 @@ def main():
                     'destination varchar(56) not NULL,'
                     'starting_balance FLOAT not NULL,'
                     'memo_text varchar(28),'
-                    'hash varchar(64) not NULL PRIMARY KEY,'
+                    'fee INT not NULL,'
+                    'fee_charged INT not NULL,'
+                    'operation_index INT not NULL,'
+                    'tx_status text,'
+                    'op_status text,'
+                    'hash varchar(64) not NULL,'
                     'time TIMESTAMP not NULL);')
 
         cur.execute('CREATE TABLE lastfile('

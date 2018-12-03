@@ -2,7 +2,7 @@ version: '3'
 
 services:
   history-etl:
-    image: kinecosystem/history-collector:3afea0a
+    image: kinecosystem/history-collector:4e816c1
     environment:
       POSTGRES_PASSWORD: 'postgres'
       POSTGRES_HOST: 'db'
