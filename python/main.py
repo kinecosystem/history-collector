@@ -11,6 +11,8 @@ import time
 import logging
 import re
 import sys
+from functools import partial
+from multiprocessing.pool import ThreadPool
 
 import boto3
 from botocore import UNSIGNED
@@ -20,20 +22,21 @@ import psycopg2
 from xdrparser import parser
 
 # Get constants from env variables
-PYTHON_PASSWORD = os.environ['PYTHON_PASSWORD']
-POSTGRES_HOST = os.environ['POSTGRES_HOST']
-KIN_ISSUER = os.environ['KIN_ISSUER']
-NETWORK_PASSPHARSE = os.environ['NETWORK_PASSPHRASE']
-MAX_RETRIES = int(os.environ['MAX_RETRIES'])
-BUCKET_NAME = os.environ['BUCKET_NAME']
-LOG_LEVEL = os.environ['LOG_LEVEL']
+PYTHON_PASSWORD = os.getenv('PYTHON_PASSWORD', '1234')
+POSTGRES_HOST = os.getenv('POSTGRES_HOST', 'localhost')
+KIN_ISSUER = os.getenv('KIN_ISSUER', 'GDF42M3IPERQCBLWFEZKQRK77JQ65SCKTU3CW36HZVCX7XX5A5QXZIVK')
+NETWORK_PASSPHARSE = os.getenv('NETWORK_PASSPHRASE', 'Public Global Kin Ecosystem Network ; June 2018')
+MAX_RETRIES = int(os.getenv('MAX_RETRIES', 5))
+BUCKET_NAME = os.getenv('BUCKET_NAME', 'stellar-core-ecosystem-6145')
+LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 
-APP_ID = os.environ.get('APP_ID', None)
-CORE_DIRECTORY = os.environ.get('CORE_DIRECTORY', '')
+logging.basicConfig(level=LOG_LEVEL, format='%(asctime)s | %(levelname)s | %(message)s')
+
+APP_ID = os.getenv('APP_ID', None)
+CORE_DIRECTORY = os.getenv('CORE_DIRECTORY', '')
 
 # Add trailing / to core directory
-if CORE_DIRECTORY != '' and CORE_DIRECTORY[-1] != '/':
-    CORE_DIRECTORY += '/'
+CORE_DIRECTORY = os.path.join(CORE_DIRECTORY, '')
 
 # 1-<uppercase|lowercase|digits>*4-anything
 APP_ID_REGEX = re.compile('^1-[A-z0-9]{4}-.*')
@@ -96,14 +99,11 @@ def download_file(s3, file_name):
 
 def get_ledgers_dictionary(ledgers):
     """Get a dictionary of a ledgerSequence and closing time."""
-    return {ledger['header']['ledgerSeq']: ledger['header']['scpValue']['closeTime'] for ledger in ledgers}
+    return {ledger['header']['ledgerSeq']: ledger['header'] for ledger in ledgers}
 
 
 def get_result_dictionary(results):
     """Get a dictionary of a transaction hash and its result"""
-    #return {result['txResultSet']['results'][0]['transactionHash']:
-    #        result['txResultSet']['results'][0]['result'] for result in results}
-
     results_dict = {}
     for result in results:
         for tx_result in result['txResultSet']['results']:
@@ -112,32 +112,41 @@ def get_result_dictionary(results):
     return results_dict
 
 
-
-
 def write_to_postgres(conn, cur, transactions, ledgers_dictionary, results_dictionary, file_name):
     """Filter payment/creation operations and write them to the database."""
     logging.info('Writing contents of file: {} to database'.format(file_name))
     for transaction_history_entry in transactions:
-        timestamp = ledgers_dictionary.get(transaction_history_entry['ledgerSeq'])
+        ledger = ledgers_dictionary.get(transaction_history_entry['ledgerSeq'])
+        timestamp = ledger['scpValue']['closeTime']
 
         for transaction in transaction_history_entry['txSet']['txs']:
+            tx_hash = transaction['hash']
+
             # Find the results of this tx based on its hash
-            results = results_dictionary.get(transaction['hash'])
-            memo = transaction['tx']['memo']['text']
+            results = results_dictionary.get(tx_hash)
+            
+            # Handle only successful transactions
+            tx_status = results['result']['code']  # txSUCCESS/FAILED/BAD_AUTH etc
+            if tx_status != 'txSUCCESS':
+                logging.warning('skipping failed transaction {}'.format(tx_hash))
+                continue
+
+            tx_memo = transaction['tx']['memo']['text']
 
             # If the transaction is not from our app, skip it
             if APP_ID is not None:
-                if APP_ID_REGEX.match(str(memo)) is not None:
-                    app = memo.split('-')[1]
+                if APP_ID_REGEX.match(str(tx_memo)) is not None:
+                    app = tx_memo.split('-')[1]
                     if app != APP_ID:
                         continue
                 else:
                     continue
 
-            tx_hash = transaction['hash']
+            tx_account = transaction['tx']['sourceAccount']['ed25519']
+            tx_account_sequence = transaction['tx']['seqNum']
             tx_fee = transaction['tx']['fee']
             tx_charged_fee = results['feeCharged']
-            tx_status = results['result']['code']  # txSUCCESS/FAILED/BAD_AUTH etc
+            tx_ledger_sequence = transaction_history_entry['ledgerSeq']
 
             for op_index, (tx_operation, result_operation) in enumerate(zip(transaction['tx']['operations'], results['result']['results'])):
                 # Operation type 1 = Payment
@@ -158,19 +167,23 @@ def write_to_postgres(conn, cur, transactions, ledgers_dictionary, results_dicti
                         except (KeyError, IndexError):
                             pass
 
-                        cur.execute("INSERT INTO payments VALUES (%s ,%s, %s, %s, %s, %s, %s, %s, %s, %s, to_timestamp(%s))",
-                                    (source,
+                        cur.execute("INSERT INTO payments VALUES (DEFAULT, %s, %s, %s ,%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, to_timestamp(%s))",
+                                    (tx_account,
+                                     tx_account_sequence,
+                                     source,
                                      destination,
                                      amount,
-                                     memo,
+                                     tx_memo,
                                      tx_fee,
                                      tx_charged_fee,
+                                     op_status,
                                      op_index,
                                      tx_status,
-                                     op_status,
                                      tx_hash,
+                                     tx_ledger_sequence,
                                      timestamp))
 
+                '''
                 # Operation type 0 = Create account
                 elif tx_operation['body']['type'] == 0:
                     source = transaction['tx']['sourceAccount']['ed25519']
@@ -188,7 +201,7 @@ def write_to_postgres(conn, cur, transactions, ledgers_dictionary, results_dicti
                                 (source,
                                  destination,
                                  balance,
-                                 memo,
+                                 tx_memo,
                                  tx_fee,
                                  tx_charged_fee,
                                  op_index,
@@ -196,6 +209,7 @@ def write_to_postgres(conn, cur, transactions, ledgers_dictionary, results_dicti
                                  op_status,
                                  tx_hash,
                                  timestamp))
+                '''
 
     # Update the 'lastfile' entry in the database
     cur.execute("UPDATE lastfile SET name = %s", (file_name,))
@@ -232,7 +246,6 @@ def get_new_file_sequence(old_file_name):
 def main():
     """Main entry point."""
     # Initialize everything
-    logging.basicConfig(level=LOG_LEVEL, format='%(asctime)s | %(levelname)s | %(message)s')
     if APP_ID is not None:
         if re.match('^[A-z0-9]{4}$', APP_ID) is None:
             logging.error('APP ID is invalid')
@@ -240,14 +253,20 @@ def main():
 
     conn = setup_postgres()
     cur = conn.cursor()
-    file_sequence = get_last_file_sequence(conn, cur)
+    file_sequence = '00203dff' #get_last_file_sequence(conn, cur)
     s3 = setup_s3()
 
     while True:
         # Download the files from S3
-        download_file(s3, 'ledger-' + file_sequence)
-        download_file(s3, 'transactions-' + file_sequence)
-        download_file(s3, 'results-' + file_sequence)
+        files = ['ledger-' + file_sequence, 'transactions-' + file_sequence, 'results-' + file_sequence]
+        pool = ThreadPool(3)
+        pool.map_async(partial(download_file, s3), files)
+        pool.close()
+        try:
+            pool.join()
+        except KeyboardInterrupt:
+            logging.info('Stopped by user, exiting')
+            exit(0)
 
         # Unpack the files
         results = parser.parse('results-{}.xdr.gz'.format(file_sequence))
