@@ -6,7 +6,9 @@ services:
     environment:
       POSTGRES_PASSWORD: 'postgres'
       POSTGRES_HOST: 'db'
-      PYTHON_PASSWORD: '1234'
+      DB_NAME: 'kin'
+      DB_USER: 'python'
+      DB_USER_PASSWORD: '1234'
       KIN_ISSUER: 'GDF42M3IPERQCBLWFEZKQRK77JQ65SCKTU3CW36HZVCX7XX5A5QXZIVK'
       FIRST_FILE: '00203dff'
       NETWORK_PASSPHRASE: 'Public Global Kin Ecosystem Network ; June 2018'
