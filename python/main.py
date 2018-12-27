@@ -1,21 +1,22 @@
-"""
-ETL for stellar history files.
-
-Script to download xdr files from an s3 bucket,
-unpack them, filter the transactions in them,
-and write the relevant transactions to a database.
-"""
-#!/usr/bin/python
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
+
+"""
+History collector/importer for Kin history files.
+
+Script to download XDR files from an S3 bucket, unpack them, filter the transactions
+and write the relevant ones to a database.
+"""
+
 
 import argparse
 import os
-import time
 import logging
 import re
 import sys
 from functools import partial
 from multiprocessing.pool import ThreadPool
+from time import sleep
 
 import boto3
 from botocore import UNSIGNED
@@ -23,16 +24,19 @@ from botocore.client import Config
 from botocore.exceptions import ClientError
 import psycopg2
 from psycopg2.extras import execute_values
+
 from xdrparser import parser as xdrparser
+from utils import OperationType, verify_file_sequence, get_new_file_sequence, get_s3_bucket_subdir
 
-logging.basicConfig(level='INFO', format='%(asctime)s | %(levelname)s | %(message)s')
 
-argparser = argparse.ArgumentParser(description='history-collector - Stellar history importer')
-argparser.add_argument('--host', default=os.getenv('POSTGRES_HOST', 'localhost'), help='host')
-argparser.add_argument('--password', default=os.getenv('POSTGRES_PASSWORD', 'postgres'), help='password')
-argparser.add_argument('--db', default=os.getenv('DB_NAME', 'kin'), help='database')
+argparser = argparse.ArgumentParser(description='history-collector - Stellar history parser/importer',
+                                    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+argparser.add_argument('--host', default=os.getenv('POSTGRES_HOST', 'localhost'), help='postgres host')
+argparser.add_argument('--superuser', default=os.getenv('POSTGRES_USER', 'postgres'), help='postgres superuser')
+argparser.add_argument('--superpass', default=os.getenv('POSTGRES_PASSWORD', 'postgres'), help='postgres superuser password')
+argparser.add_argument('--db', default=os.getenv('POSTGRES_DB', 'kin'), help='default database')
 argparser.add_argument('--user', default=os.getenv('DB_USER', 'python'), help='database user')
-argparser.add_argument('--userpass', default=os.getenv('DB_USER_PASSWORD', '1234'), help='user password')
+argparser.add_argument('--password', default=os.getenv('DB_USER_PASSWORD', '1234'), help='user password')
 argparser.add_argument('--issuer', default=os.getenv('KIN_ISSUER',
                                                      'GDF42M3IPERQCBLWFEZKQRK77JQ65SCKTU3CW36HZVCX7XX5A5QXZIVK'),
                        help='KIN issuer address')
@@ -40,32 +44,46 @@ argparser.add_argument('--passphrase', default=os.getenv('NETWORK_PASSPHRASE',
                                                          'Public Global Kin Ecosystem Network ; June 2018'),
                        help='Stellar network passphrase')
 argparser.add_argument('--bucket', default=os.getenv('BUCKET_NAME', 'stellar-core-ecosystem-6145'), help='s3 bucket name')
-argparser.add_argument('--app', default=os.getenv('APP_ID'), help='database')
-argparser.add_argument('--retries', default=os.getenv('MAX_RETRIES', 5), help='max retries')
-argparser.add_argument('--dir', default=os.getenv('CORE_DIRECTORY', ''), help='working directory')
+argparser.add_argument('--first', default=os.getenv('FIRST_FILE'), help='ledger file to scan from')
+argparser.add_argument('--app', default=os.getenv('APP_ID'), help='application id to filter by')
+argparser.add_argument('--retries', type=int, default=os.getenv('MAX_RETRIES', 5), help='how many times to retry downloading')
+argparser.add_argument('--coredir', default=os.getenv('CORE_DIRECTORY', ''), help='core root directory on s3')
+argparser.add_argument('--loglevel', default=os.getenv('LOG_LEVEL', 'INFO'), help='app log level (ERROR/WARNING/INFO/DEBUG)')
 args = argparser.parse_args()
 
 POSTGRES_HOST = args.host
-POSTGRES_PASSWORD = args.password
+POSTGRES_USER = args.superuser
+POSTGRES_PASSWORD = args.superpass
 DB_NAME = args.db
 DB_USER = args.user
-DB_USER_PASSWORD = args.userpass
+DB_USER_PASSWORD = args.password
 KIN_ISSUER = args.issuer
 NETWORK_PASSPHRASE = args.passphrase
 BUCKET_NAME = args.bucket
 APP_ID = args.app
-MAX_RETRIES = int(args.retries)
-CORE_DIRECTORY = args.dir
+CORE_DIRECTORY = args.coredir
+MAX_RETRIES = args.retries
+RETRY_DELAY = 180  # TODO: check if fair and can be a const
+FIRST_FILE = args.first
+LOG_LEVEL = args.loglevel
 
-# Add trailing / to core directory
+logging.basicConfig(level=LOG_LEVEL, format='%(asctime)s | %(levelname)s | %(message)s')
+
+
+if FIRST_FILE and not verify_file_sequence(FIRST_FILE):
+    logging.error('Invalid first file')
+    sys.exit(1)
+
+# Add trailing / to core directory if needed
 CORE_DIRECTORY = os.path.join(CORE_DIRECTORY, '')
 
 # 1-<uppercase|lowercase|digits>*4-anything
 APP_ID_REGEX = re.compile('^1-[A-z0-9]{4}-.*')
 
-if APP_ID is not None and re.match('^[A-z0-9]{4}$', APP_ID) is None:
+if APP_ID and not re.match('^[A-z0-9]{4}$', APP_ID):
     logging.error('APP ID is invalid')
     sys.exit(1)
+
 
 def setup_s3():
     """Set up the s3 client with anonymous connection."""
@@ -74,68 +92,60 @@ def setup_s3():
     return s3
 
 
-def setup_postgres():
-    """Set up a connection to the postgres database using the user 'python'."""
+def setup_db_connection():
+    """Set up a connection to the postgres database."""
     conn_string = "host='{}' dbname='{}' user='{}' password='{}'".format(POSTGRES_HOST, DB_NAME, DB_USER, DB_USER_PASSWORD)
     conn = psycopg2.connect(conn_string)
-    logging.info('Successfully connected to the database')
+    logging.info('Successfully connected to the database {} on host {}'.format(DB_NAME, POSTGRES_HOST))
     return conn
 
 
-def get_last_file_sequence(conn, cur):
+def get_last_file_sequence(cur):
     """Get the sequence of the last file scanned."""
-    cur.execute('SELECT * FROM lastfile;')
+    cur.execute('SELECT file_sequence FROM last_state;')
     return cur.fetchone()[0]
 
 
 def download_file(s3, file_name):
     """Download the files from the s3 bucket."""
-    # File transactions-004c93bf.xdr.gz will be in:
-    # BUCKET_NAME/CORE_DIRECTORY/transactions/00/4c/93/
 
-    # "ledger-004c93bf" > "00/4c/93/"
-    file_number = file_name.split('-')[-1]
-    sub_directory = '/'.join(file_number[i:i + 2] for i in range(0, len(file_number), 2))
-    sub_directory = sub_directory[:9]
-    sub_directory = file_name.split('-')[0] + '/' + sub_directory
+    subdir = get_s3_bucket_subdir(file_name)
 
     for attempt in range(MAX_RETRIES + 1):
         try:
             logging.info('Trying to download file {}.xdr.gz'.format(file_name))
-            s3.download_file(BUCKET_NAME, CORE_DIRECTORY + sub_directory + file_name + '.xdr.gz', file_name + '.xdr.gz')
+            s3.download_file(BUCKET_NAME, CORE_DIRECTORY + subdir + file_name + '.xdr.gz', file_name + '.xdr.gz')
             logging.info('File {} downloaded'.format(file_name))
             break
         except ClientError as e:
-
-            # If you failed to get the file more than MAX_RETRIES times: raise the exception
             if attempt == MAX_RETRIES:
                 logging.error('Reached retry limit when downloading file {}, quitting.'.format(file_name))
                 raise
 
-            # If I get a 404, it might mean that the file does not exist yet, so I will try again in 3 minutes
+            # If I get a 404, it might mean that the file does not exist yet, so I will try again after a delay
+            # TODO: this is how new files are ingested, have to make it more explicit.
             error_code = int(e.response['Error']['Code'])
             if error_code == 404:
-                logging.warning('404, could not get file {}, retrying in 3 minutes'.format(file_name))
-                time.sleep(180)
+                logging.warning('404, file not found {}, retrying in {} seconds'.format(file_name, RETRY_DELAY))
+                sleep(RETRY_DELAY)
 
 
 def get_ledgers_dictionary(ledgers):
-    """Get a dictionary of a ledgerSequence and closing time."""
+    """Get a dictionary of ledgers."""
     return {ledger['header']['ledgerSeq']: ledger['header'] for ledger in ledgers}
 
 
 def get_result_dictionary(results):
-    """Get a dictionary of a transaction hash and its result"""
+    """Get a dictionary of transaction results."""
     results_dict = {}
     for result in results:
         for tx_result in result['txResultSet']['results']:
             results_dict[tx_result['transactionHash']] = tx_result['result']
-
     return results_dict
 
 
 def get_app_id(tx_memo):
-    """Get app_id from transaction memo"""
+    """Get app_id from transaction memo."""
     if APP_ID_REGEX.match(str(tx_memo)):
         return tx_memo.split('-')[1]
     return None
@@ -148,113 +158,110 @@ def is_asset_kin(asset):
            and asset['alphaNum4']['issuer']['ed25519'] == KIN_ISSUER
 
 
-def write_to_postgres(conn, cur, history_transactions, ledgers_dictionary, results_dictionary, file_name):
-    """Filter payment/creation operations and write them to the database."""
-    logging.info('Writing contents of file: {} to database'.format(file_name))
-
-    # aggregator
-    payments = []
+def filter_data(history_transactions, ledgers_dictionary, results_dictionary):
+    """Filter transactions and extract only relevant data."""
+    aggregator = []
 
     for transaction_history_entry in history_transactions:
-        ledger = ledgers_dictionary.get(transaction_history_entry['ledgerSeq'])
-        timestamp = ledger['scpValue']['closeTime']
+        ledger_sequence = transaction_history_entry['ledgerSeq']
+        ledger = ledgers_dictionary.get(ledger_sequence)
+        ledger_timestamp = ledger['scpValue']['closeTime']
 
-        for transaction in transaction_history_entry['txSet']['txs']:
+        for tx_order, transaction in enumerate(transaction_history_entry['txSet']['txs']):
             tx_hash = transaction['hash']
-
-            # Find the results of this tx based on its hash
-            results = results_dictionary.get(tx_hash)
-            
-            # Handle only successful history_transactions
-            tx_status = results['result']['code']  # txSUCCESS/FAILED/BAD_AUTH etc
-            if tx_status != 'txSUCCESS':
-                logging.warning('skipping failed transaction {}'.format(tx_hash))
-                continue
-
             tx_memo = transaction['tx']['memo']['text']
 
-            # If the transaction is not from our app, skip it
+            # If app filter is defined and the transaction is not from our app, skip it
             if APP_ID and get_app_id(tx_memo) != APP_ID:
                 continue
 
+            tx_result = results_dictionary.get(tx_hash)
+            tx_status = tx_result['result']['code']
             tx_account = transaction['tx']['sourceAccount']['ed25519']
             tx_account_sequence = transaction['tx']['seqNum']
-            tx_ledger_sequence = transaction_history_entry['ledgerSeq']
 
-            for op_index, (tx_operation, result_operation) in enumerate(zip(transaction['tx']['operations'], results['result']['results'])):
-                # Handle only payments
-                if tx_operation['body']['type'] != 1:
-                    continue
+            for op_order, (tx_operation, op_result) in \
+                    enumerate(zip(transaction['tx']['operations'], tx_result['result']['results'])):
 
-                # Handle only KIN payments
-                if not is_asset_kin(tx_operation['body']['paymentOp']['asset']):
-                    continue
-
-                source = transaction['tx']['sourceAccount']['ed25519']
-                destination = tx_operation['body']['paymentOp']['destination']['ed25519']
-                amount = tx_operation['body']['paymentOp']['amount']
-
-                # Override the tx source with the operation source if it exists
+                # Override the tx source with the operation source if available
                 if len(tx_operation['sourceAccount']) > 0 and 'ed25519' in tx_operation['sourceAccount'][0]:
                     source = tx_operation['sourceAccount'][0]['ed25519']
+                else:
+                    source = tx_account
 
-                # append to our aggregator
-                payments.append((tx_hash,
-                                 tx_account,
-                                 tx_account_sequence,
-                                 source, destination,
-                                 amount,
-                                 tx_memo,
-                                 op_index,
-                                 tx_ledger_sequence,
-                                 timestamp))
+                op_type = OperationType(tx_operation['body']['type'])
 
-        # Insert aggregated values
-        execute_values(cur, 'INSERT INTO payments (tx_hash, account, account_sequence, source, destination, '
-                            'amount, memo_text, op_index, ledger_sequence, date) VALUES %s ON CONFLICT DO NOTHING',
-                       payments, '(%s, %s, %s, %s, %s, %s, %s, %s, %s, to_timestamp(%s))')
+                if op_type == OperationType.PAYMENT:
+                    # Handle only KIN payments
+                    op_asset = tx_operation['body']['paymentOp']['asset']
+                    if not is_asset_kin(op_asset):
+                        continue
+                    op_status = op_result['tr']['paymentResult']['code']
+                    amount = tx_operation['body']['paymentOp']['amount']
+                    destination = tx_operation['body']['paymentOp']['destination']['ed25519']
+                elif op_type == OperationType.CREATE_ACCOUNT:
+                    op_status = op_result['tr']['createAccountResult']['code']
+                    amount = tx_operation['body']['createAccountOp']['startingBalance']
+                    destination = tx_operation['body']['createAccountOp']['destination']['ed25519']
+                elif op_type == OperationType.CHANGE_TRUST:
+                    op_asset = tx_operation['body']['changeTrustOp']['line']
+                    if not is_asset_kin(op_asset):
+                        continue
+                    op_status = op_result['tr']['changeTrustResult']['code']
+                    amount = 0
+                    destination = source
+                elif op_type == OperationType.ACCOUNT_MERGE:
+                    op_status = op_result['tr']['accountMergeResult']['code']
+                    if op_status == 'ACCOUNT_MERGE_SUCCESS':
+                        amount = op_result['tr']['accountMergeResult']['sourceAccountBalance']
+                    else:
+                        amount = 0
+                    destination = tx_operation['body']['destination']
+                    continue  # TODO: remove when Kin is a base currency!
+                else:
+                    continue
 
-    # Update the 'lastfile' entry in the database
-    cur.execute("UPDATE lastfile SET name = %s", (file_name,))
+                is_signed_by_app = False  # TODO
 
-    conn.commit()
-    logging.info('Successfully imported file {} to database: {} records written'.format(file_name, len(payments)))
+                # Append to our aggregator
+                aggregator.append((ledger_sequence,
+                                   tx_hash, tx_order, tx_status,
+                                   tx_account, tx_account_sequence,
+                                   op_order, str(op_type), op_status,
+                                   source, destination, amount,
+                                   tx_memo, is_signed_by_app, ledger_timestamp))
+    return aggregator
 
 
-def get_new_file_sequence(old_file_name):
-    """
-    Return the name of the next file to scan.
+def save_data(cur, file_sequence, data):
+    """Write data to database."""
+    logging.info('Writing contents of file {} to database'.format(file_sequence))
 
-    Transaction files are stored with an ascending hexadecimal name, for example:
-    └── transactions
-    └── 00
-        └── 72
-            ├── 6a
-            │   ├── transactions-00726a3f.xdr.gz
-            │   ├── transactions-00726a7f.xdr.gz
-            │   ├── transactions-00726abf.xdr.gz
-            │   └── transactions-00726aff.xdr.gz
+    # Insert aggregated values
+    execute_values(cur, 'INSERT INTO transactions (ledger_sequence, '
+                        'tx_hash, tx_order, tx_status, '
+                        'account, account_sequence, '
+                        'operation_order, operation_type, operation_status, '
+                        'source, destination, amount, '
+                        'memo_text, is_signed_by_app, timestamp) VALUES %s ON CONFLICT DO NOTHING',
+                   data, '(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, to_timestamp(%s))')
 
-    So get the sequence of the last file scanned > convert to decimal > add 64 > convert back to hex >
-    remove the '0x' prefix > and add '0' until the file name is 8 letters long
-    """
-    new_file_name = int(old_file_name, 16)
-    new_file_name = new_file_name + 64
-    new_file_name = hex(new_file_name)
-    new_file_name = new_file_name.replace('0x', '')
-    new_file_name = '0' * (8 - len(new_file_name)) + new_file_name
+    # Update the last state
+    cur.execute("UPDATE last_state SET file_sequence = %s", (file_sequence,))
 
-    return new_file_name
+    cur.connection.commit()
+    logging.info('Saved file {}. Filtered operations: {}'.format(file_sequence, len(data)))
 
 
 def main():
     """Main entry point."""
     # Initialize everything
-    conn = setup_postgres()
+    conn = setup_db_connection()
     cur = conn.cursor()
-    file_sequence = get_last_file_sequence(conn, cur)
     s3 = setup_s3()
+    file_sequence = FIRST_FILE if FIRST_FILE else get_last_file_sequence(cur)
 
+    # Receive/Process/Store loop
     while True:
         # Download the files from S3
         files = ['ledger-' + file_sequence, 'transactions-' + file_sequence, 'results-' + file_sequence]
@@ -280,8 +287,11 @@ def main():
         ledgers_dictionary = get_ledgers_dictionary(ledgers)
         results_dictionary = get_result_dictionary(results)
 
-        # Write the data to the postgres database
-        write_to_postgres(conn, cur, transactions, ledgers_dictionary, results_dictionary, file_sequence)
+        # Filter data
+        filtered_data = filter_data(transactions, ledgers_dictionary, results_dictionary)
+
+        # Store data
+        save_data(cur, file_sequence, filtered_data)
 
         # Remove the files from storage
         logging.info('Removing downloaded files.')

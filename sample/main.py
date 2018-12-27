@@ -17,7 +17,7 @@ conn.autocommit = True
 
 
 @app.route('/payments', methods=['GET'])
-def payments():
+def get_payments():
     """Get transactions sent from a single account"""
     data = request.args
     source = data['source']
@@ -35,18 +35,18 @@ def payments():
 
 
 @app.route('/tx', methods=['GET'])
-def tx():
+def get_tx():
     """Get a specific transaction by its id"""
     data = request.args
     tx_id = data['id']
-    cur.execute("SELECT * from payments where hash=%s", (tx_id,))
+    cur.execute("SELECT * from payments where tx_hash=%s", (tx_id,))
     result = cur.fetchone()
 
+    if not result:
+        return 'Not Found', 404
+
     result['time'] = result['time'].strftime("%Y-%m-%d")
-    response = json.dumps(result, indent=2)
-
-    return response, 200
-
+    return json.dumps(result, indent=2), 200
 
 
 if __name__ == '__main__':

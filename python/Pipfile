@@ -3,9 +3,6 @@ verify_ssl = true
 name = "pypi"
 url = "https://pypi.python.org/simple"
 
-[requires]
-#python_version = "3.5"
-
 [packages]
 "boto3" = "~=1.7"
 "psycopg2-binary" = "~=2.7"
