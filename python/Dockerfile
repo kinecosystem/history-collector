@@ -17,4 +17,4 @@ RUN pip install pipenv \
 # Copy the code
 COPY . .
 
-CMD pipenv run python build_database.py && pipenv run python main.py
+CMD pipenv run python main.py

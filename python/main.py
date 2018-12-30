@@ -113,9 +113,9 @@ def download_file(s3, file_name):
 
     for attempt in range(MAX_RETRIES + 1):
         try:
-            logging.info('Trying to download file {}.xdr.gz'.format(file_name))
+            logging.debug('Trying to download file {}.xdr.gz'.format(file_name))
             s3.download_file(BUCKET_NAME, CORE_DIRECTORY + subdir + file_name + '.xdr.gz', file_name + '.xdr.gz')
-            logging.info('File {} downloaded'.format(file_name))
+            logging.debug('File {} downloaded'.format(file_name))
             break
         except ClientError as e:
             if attempt == MAX_RETRIES:
@@ -235,7 +235,7 @@ def filter_data(history_transactions, ledgers_dictionary, results_dictionary):
 
 def save_data(cur, file_sequence, data):
     """Write data to database."""
-    logging.info('Writing contents of file {} to database'.format(file_sequence))
+    logging.debug('Writing contents of file {} to database'.format(file_sequence))
 
     # Insert aggregated values
     execute_values(cur, 'INSERT INTO transactions (ledger_sequence, '
@@ -294,7 +294,7 @@ def main():
         save_data(cur, file_sequence, filtered_data)
 
         # Remove the files from storage
-        logging.info('Removing downloaded files.')
+        logging.debug('Removing downloaded files.')
         os.remove(ledger_file)
         os.remove(transaction_file)
         os.remove(results_file)

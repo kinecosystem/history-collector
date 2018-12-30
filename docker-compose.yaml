@@ -18,4 +18,12 @@ services:
       CORE_DIRECTORY: ''
       FIRST_FILE: '0000003f'
       LOG_LEVEL: 'INFO'
+    depends_on:
+      - db
 
+  db:
+    image: postgres:11-alpine
+    environment:
+      POSTGRES_PASSWORD: 'postgres'
+    ports:
+      - 5432:5432
