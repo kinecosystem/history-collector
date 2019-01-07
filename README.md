@@ -42,15 +42,26 @@ Edit the docker-compose file to configure it
 | LOG_LEVEL                  | INFO        | Application log level (ERROR/WARNING/INFO/DEBUG) |                                                                                                                                
 
 ## Usage:
-To run the service, simply clone the [docker-compose.yaml](https://github.com/kinecosystem/history-collector/raw/master/docker-compose.yaml]) 
-file, edit the configurations and run
+First, you will need to initialize a database structure for your application. Use the attached 
+[script](https://github.com/kinecosystem/history-collector/raw/master/python/build_database.py) to do it:
+``` bash
+$ docker run -it --rm --net=host kinecosystem/history-collector pipenv run python /opt/history-collector/build_database.py
+```
+
+Then, run the collector:
+```bash
+$ docker run -it --rm --net=host --name history-collector kinecosystem/history-collector
+```
+
+Alternatively, create a `docker-compose.yml` file similar to [the example](https://github.com/kinecosystem/history-collector/raw/master/sample/docker-compose.yaml]) 
+and run your application:
 ```bash
 $ sudo docker-compose up -d
 ````
 
-Logs can be accessed using
+After starting the container, check that it is running correctly:
 ```bash
-$ sudo docker-compose logs
+$ sudo docker logs -f --tail 10 history-collector
 ```
 
 ## Demo:  

@@ -260,6 +260,7 @@ def main():
     cur = conn.cursor()
     s3 = setup_s3()
     file_sequence = FIRST_FILE if FIRST_FILE else get_last_file_sequence(cur)
+    logging.info('Starting from file {}'.format(file_sequence))
 
     # Receive/Process/Store loop
     while True:
