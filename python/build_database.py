@@ -63,7 +63,7 @@ def main():
         cur.execute('CREATE TABLE payments('
                     'source varchar(56) not NULL,'
                     'destination varchar(56) not NULL,'
-                    'amount FLOAT not NULL,'
+                    'amount BIGINT not NULL,'
                     'memo_text varchar(28),'
                     'fee INT not NULL,'
                     'fee_charged INT not NULL,'
@@ -76,7 +76,7 @@ def main():
         cur.execute('CREATE TABLE creations('
                     'source varchar(56) not NULL,'
                     'destination varchar(56) not NULL,'
-                    'starting_balance FLOAT not NULL,'
+                    'starting_balance BIGINT not NULL,'
                     'memo_text varchar(28),'
                     'fee INT not NULL,'
                     'fee_charged INT not NULL,'
@@ -99,7 +99,7 @@ def main():
         cur.execute('GRANT SELECT on creations TO python')
         cur.execute('GRANT INSERT on lastfile TO python')
         cur.execute('GRANT SELECT on lastfile TO python')
-        cur.execute('GRANT UPDATE on lastfile to python')
+        cur.execute('GRANT UPDATE on lastfile TO python')
 
         logging.info('Database created successfully.')
 

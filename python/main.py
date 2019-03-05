@@ -13,16 +13,17 @@ import re
 import sys
 
 import boto3
+import psycopg2
 from botocore import UNSIGNED
 from botocore.client import Config
 from botocore.exceptions import ClientError
-import psycopg2
+from kin_base.stellarxdr.StellarXDR_const import ASSET_TYPE_NATIVE
 from xdrparser import parser
 
 # Get constants from env variables
+FIRST_FILE = os.environ['FIRST_FILE']
 PYTHON_PASSWORD = os.environ['PYTHON_PASSWORD']
 POSTGRES_HOST = os.environ['POSTGRES_HOST']
-KIN_ISSUER = os.environ['KIN_ISSUER']
 NETWORK_PASSPHARSE = os.environ['NETWORK_PASSPHRASE']
 MAX_RETRIES = int(os.environ['MAX_RETRIES'])
 BUCKET_NAME = os.environ['BUCKET_NAME']
@@ -35,8 +36,8 @@ CORE_DIRECTORY = os.environ.get('CORE_DIRECTORY', '')
 if CORE_DIRECTORY != '' and CORE_DIRECTORY[-1] != '/':
     CORE_DIRECTORY += '/'
 
-# 1-<uppercase|lowercase|digits>*4-anything
-APP_ID_REGEX = re.compile('^1-[A-z0-9]{4}-.*')
+# 1-<uppercase|lowercase|digits>*3,4-anything
+APP_ID_REGEX = re.compile('^1-[A-z0-9]{3,4}-.*')
 
 
 def setup_s3():
@@ -112,8 +113,6 @@ def get_result_dictionary(results):
     return results_dict
 
 
-
-
 def write_to_postgres(conn, cur, transactions, ledgers_dictionary, results_dictionary, file_name):
     """Filter payment/creation operations and write them to the database."""
     logging.info('Writing contents of file: {} to database'.format(file_name))
@@ -142,10 +141,8 @@ def write_to_postgres(conn, cur, transactions, ledgers_dictionary, results_dicti
             for op_index, (tx_operation, result_operation) in enumerate(zip(transaction['tx']['operations'], results['result']['results'])):
                 # Operation type 1 = Payment
                 if tx_operation['body']['type'] == 1:
-                    # Check if this is a payment for our asset
-                    if tx_operation['body']['paymentOp']['asset']['alphaNum4'] is not None and \
-                                    tx_operation['body']['paymentOp']['asset']['alphaNum4']['assetCode'] == 'KIN' and \
-                                    tx_operation['body']['paymentOp']['asset']['alphaNum4']['issuer']['ed25519'] == KIN_ISSUER:
+                    # Check if its a native payment
+                    if tx_operation['body']['paymentOp']['asset']['type'] == ASSET_TYPE_NATIVE:
 
                         source = transaction['tx']['sourceAccount']['ed25519']
                         destination = tx_operation['body']['paymentOp']['destination']['ed25519']
@@ -241,6 +238,9 @@ def main():
     conn = setup_postgres()
     cur = conn.cursor()
     file_sequence = get_last_file_sequence(conn, cur)
+    if file_sequence != FIRST_FILE:
+        # If we restarted, get the next file instead of the current one
+        file_sequence = get_new_file_sequence(file_sequence)
     s3 = setup_s3()
 
     while True:
@@ -253,7 +253,7 @@ def main():
         results = parser.parse('results-{}.xdr.gz'.format(file_sequence))
         ledgers = parser.parse('ledger-{}.xdr.gz'.format(file_sequence))
         transactions = parser.parse('transactions-{}.xdr.gz'.format(file_sequence),
-                                    with_hash=True, network_id=NETWORK_PASSPHARSE)
+                                    with_hash=True, network_id=NETWORK_PASSPHARSE, raw_amount=True)
 
         # Get a ledger:closeTime dictionary
         ledgers_dictionary = get_ledgers_dictionary(ledgers)
