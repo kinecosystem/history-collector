@@ -11,6 +11,7 @@ The python script constantly downloads files from the blockchain's s3 archive, p
 * Saved attributes are: source, destination, memo **text**, tx hash, fee, fee_charged, tx_status, operation_status, and timestamp
 * For payments, amount is also saved
 * For creation, starting balance is also saved
+* Amounts and starting balance are in stroops!
 * The source account will be the source of the operation, if it exists.
 * The service stores the last file scanned in the database, so you can restart the service without starting all over again
 
