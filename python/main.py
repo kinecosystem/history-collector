@@ -20,6 +20,7 @@ import psycopg2
 from xdrparser import parser
 
 # Get constants from env variables
+FIRST_FILE = os.environ['FIRST_FILE']
 PYTHON_PASSWORD = os.environ['PYTHON_PASSWORD']
 POSTGRES_HOST = os.environ['POSTGRES_HOST']
 KIN_ISSUER = os.environ['KIN_ISSUER']
@@ -241,6 +242,9 @@ def main():
     conn = setup_postgres()
     cur = conn.cursor()
     file_sequence = get_last_file_sequence(conn, cur)
+    if file_sequence != FIRST_FILE:
+        # If restarted, getting next file in sequence as the last one was ingested
+        file_sequence = get_new_file_sequence(file_sequence)
     s3 = setup_s3()
 
     while True:
