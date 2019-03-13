@@ -138,7 +138,7 @@ def write_to_postgres(conn, cur, transactions, ledgers_dictionary, results_dicti
             tx_charged_fee = results['feeCharged']
             tx_status = results['result']['code']  # txSUCCESS/FAILED/BAD_AUTH etc
 
-            for op_index, (tx_operation, result_operation) in enumerate(zip(transaction['tx']['operations'], results['result'].get('results'))):
+            for op_index, (tx_operation, result_operation) in enumerate(zip(transaction['tx']['operations'], results['result'].get('results', []))):
 
                 op_status = None
 
