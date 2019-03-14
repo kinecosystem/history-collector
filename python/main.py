@@ -146,7 +146,10 @@ def write_to_postgres(conn, cur, transactions, ledgers_dictionary, results_dicti
             tx_charged_fee = results['feeCharged']
             tx_status = results['result']['code']  # txSUCCESS/FAILED/BAD_AUTH etc
 
-            for op_index, (tx_operation, result_operation) in enumerate(zip(transaction['tx']['operations'], results['result']['results'])):
+            for op_index, (tx_operation, result_operation) in enumerate(zip(transaction['tx']['operations'], results['result'].get('results', []))):
+
+                op_status = None
+
                 # Operation type 1 = Payment
                 if tx_operation['body']['type'] == 1:
                     # Check if this is a payment for our asset
@@ -157,7 +160,8 @@ def write_to_postgres(conn, cur, transactions, ledgers_dictionary, results_dicti
                         source = transaction['tx']['sourceAccount']['ed25519']
                         destination = tx_operation['body']['paymentOp']['destination']['ed25519']
                         amount = tx_operation['body']['paymentOp']['amount']
-                        op_status = result_operation['tr']['paymentResult']['code']
+                        if result_operation:
+                            op_status = result_operation['tr']['paymentResult']['code']
 
                         # Override the tx source with the operation source if it exists
                         try:
@@ -183,7 +187,8 @@ def write_to_postgres(conn, cur, transactions, ledgers_dictionary, results_dicti
                     source = transaction['tx']['sourceAccount']['ed25519']
                     destination = tx_operation['body']['createAccountOp']['destination']['ed25519']
                     balance = tx_operation['body']['createAccountOp']['startingBalance']
-                    op_status = result_operation['tr']['createAccountResult']['code']
+                    if result_operation:
+                        op_status = result_operation['tr']['createAccountResult']['code']
 
                     # Override the tx source with the operation source if it exists
                     try:
