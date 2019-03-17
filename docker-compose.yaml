@@ -2,12 +2,16 @@ version: '3'
 
 services:
   history-etl:
-    image: kinecosystem/history-collector:20190313kin3
+    image: kinecosystem/history-collector:20190314kin3
     #network_mode: host  # for local db
     environment:
       POSTGRES_PASSWORD: ''
       POSTGRES_HOST: ''
       PYTHON_PASSWORD: ''
+      EMAIL_SMTP: ''
+      EMAIL_ACCOUNT: ''
+      EMAIL_PASSWORD: ''
+      EMAIL_RECIPIENTS: ''
       FIRST_FILE: '0000003f'
       NETWORK_PASSPHRASE: 'Kin Mainnet ; December 2018'
       MAX_RETRIES: 5
