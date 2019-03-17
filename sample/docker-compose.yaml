@@ -2,11 +2,15 @@ version: '3'
 
 services:
   history-etl:
-    image: kinecosystem/history-collector:4e816c1
+    image: kinecosystem/history-collector:20190314kin2
     environment:
       POSTGRES_PASSWORD: 'postgres'
       POSTGRES_HOST: 'db'
       PYTHON_PASSWORD: '1234'
+      EMAIL_SMTP: ''
+      EMAIL_ACCOUNT: ''
+      EMAIL_PASSWORD: ''
+      EMAIL_RECIPIENTS: ''
       KIN_ISSUER: 'GDF42M3IPERQCBLWFEZKQRK77JQ65SCKTU3CW36HZVCX7XX5A5QXZIVK'
       FIRST_FILE: '00203dff'
       NETWORK_PASSPHRASE: 'Public Global Kin Ecosystem Network ; June 2018'
