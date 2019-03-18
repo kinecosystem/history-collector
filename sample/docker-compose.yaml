@@ -7,6 +7,8 @@ services:
       POSTGRES_PASSWORD: 'postgres'
       POSTGRES_HOST: 'db'
       PYTHON_PASSWORD: '1234'
+      LAMBDA_NAME: ''
+      LAMBDA_REGION: ''
       EMAIL_SMTP: ''
       EMAIL_ACCOUNT: ''
       EMAIL_PASSWORD: ''
