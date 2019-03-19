@@ -38,6 +38,9 @@ EMAIL_ACCOUNT = os.environ.get('EMAIL_ACCOUNT')
 EMAIL_PASSWORD = os.environ.get('EMAIL_PASSWORD')
 EMAIL_RECIPIENTS = os.environ.get('EMAIL_RECIPIENTS')
 
+LAMBDA_NAME = os.environ.get('LAMBDA_NAME')
+LAMBDA_REGION = os.environ.get('LAMBDA_REGION', 'us-east-1')
+
 
 # Add trailing / to core directory
 if CORE_DIRECTORY != '' and CORE_DIRECTORY[-1] != '/':
@@ -307,6 +310,10 @@ def main():
             send_email_alert(traceback.format_exc())
             logging.error('Error occurred, alert email sent')
 
+        if LAMBDA_REGION:
+            invoke_lambda(traceback.format_exc())
+            logging.error('Error occurred, invoked lambda')
+
         raise
 
 
@@ -333,6 +340,12 @@ def __convert_recipients_to_list(recipients_str):
     # Removing from the strings any character that might be included in a string representation of a python list
     remove_chars_trans = str.maketrans('', '', '\'"[] ')
     return recipients_str.translate(remove_chars_trans).split(',')
+
+
+def invoke_lambda(error_msg):
+
+    lambda_client = boto3.client('lambda', LAMBDA_REGION)
+    lambda_client.invoke(FunctionName=LAMBDA_NAME, Payload={"message": error_msg})
 
 
 if __name__ == '__main__':
