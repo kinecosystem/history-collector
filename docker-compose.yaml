@@ -8,6 +8,8 @@ services:
       POSTGRES_PASSWORD: ''
       POSTGRES_HOST: ''
       PYTHON_PASSWORD: ''
+      LAMBDA_NAME: ''
+      LAMBDA_REGION: ''
       EMAIL_SMTP: ''
       EMAIL_ACCOUNT: ''
       EMAIL_PASSWORD: ''
