@@ -288,7 +288,7 @@ def main():
             results = parser.parse('results-{}.xdr.gz'.format(file_sequence))
             ledgers = parser.parse('ledger-{}.xdr.gz'.format(file_sequence))
             transactions = parser.parse('transactions-{}.xdr.gz'.format(file_sequence),
-                                        with_hash=True, network_id=NETWORK_PASSPHARSE)
+                                        with_hash=True, network_id=NETWORK_PASSPHARSE, raw_amount=True)
 
             # Get a ledger:closeTime dictionary
             ledgers_dictionary = get_ledgers_dictionary(ledgers)
