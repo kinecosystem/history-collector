@@ -379,7 +379,7 @@ def send_notification(notification_message):
         send_email_alert(notification_message)
         logging.error('Error occurred, alert email sent')
 
-    if LAMBDA_REGION:
+    if LAMBDA_NAME:
         invoke_lambda({"message": notification_message})
         logging.error('Error occurred, lambda invoked')
 
