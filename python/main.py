@@ -15,6 +15,7 @@ import traceback
 import smtplib
 import ssl
 import boto3
+import json
 from botocore import UNSIGNED
 from botocore.client import Config
 from botocore.exceptions import ClientError
@@ -97,7 +98,7 @@ def download_file(s3, file_name):
 
             # If you failed to get the file more than MAX_RETRIES times: raise the exception
             if attempt == MAX_RETRIES:
-                logging.error('Reached retry limit when downloading file {}, quitting.'.format(file_name))
+                logging.error('Reached retry limit when downloading file {}, raising exception.'.format(file_name))
                 raise
 
             # If I get a 404, it might mean that the file does not exist yet, so I will try again in 3 minutes
@@ -256,19 +257,7 @@ def main():
 
     # Validating email alert if necessary
     if EMAIL_SMTP:
-        logging.info('SMTP host given, authenticates login to the SMTP server')
-        if not (EMAIL_ACCOUNT and EMAIL_PASSWORD and EMAIL_RECIPIENTS):
-            logging.error('Missing at least one of the EMAIL environment variables')
-            sys.exit(1)
-
-        context = ssl.create_default_context()
-
-        try:
-            with smtplib.SMTP_SSL(EMAIL_SMTP, SSL_PORT, context=context) as server:
-                server.login(user=EMAIL_ACCOUNT, password=EMAIL_PASSWORD)
-        except smtplib.SMTPAuthenticationError:
-            logging.error('Could not login to SMTP server with the given email account and password')
-            sys.exit(1)
+        __email_validation()
 
     conn = setup_postgres()
     cur = conn.cursor()
@@ -278,9 +267,11 @@ def main():
         file_sequence = get_new_file_sequence(file_sequence)
     s3 = setup_s3()
 
-    try:
-        
-        while True:
+    consecutive_failed_attempts = 0
+
+    while True:
+
+        try:
             # Download the files from S3
             download_file(s3, 'ledger-' + file_sequence)
             download_file(s3, 'transactions-' + file_sequence)
@@ -308,17 +299,32 @@ def main():
 
             # Get the name of the next file I should work on
             file_sequence = get_new_file_sequence(file_sequence)
+            consecutive_failed_attempts = 0
 
-    except Exception:
-        if EMAIL_SMTP:
-            send_email_alert(traceback.format_exc())
-            logging.error('Error occurred, alert email sent')
+        except ClientError:
+            # Avoiding failing the process, only sending notification on 1st occurrence
+            if consecutive_failed_attempts == 0:
+                # Sending notification only if there is a new delay
+                send_notification("Reached retry limit when downloading the next ledger: {}\n".format(file_sequence) +
+                                  "There might be a delay in the blockchain archiving bucket.")
+                consecutive_failed_attempts += 1
+            continue
 
-        if LAMBDA_REGION:
-            invoke_lambda(traceback.format_exc())
-            logging.error('Error occurred, invoked lambda')
+        except Exception:
+            # Retries until we exceed the max retries. Logging the exception either way
 
-        raise
+            logging.warning('Exception occurred')
+            logging.warning(traceback.format_exc())
+
+            if consecutive_failed_attempts > MAX_RETRIES:
+
+                logging.error('Reached retry limit. Quitting.')
+                send_notification(traceback.format_exc())
+                raise
+
+            logging.info('Retrying in 3 minutes')
+            time.sleep(180)
+            consecutive_failed_attempts += 1
 
 
 def send_email_alert(error_msg):
@@ -346,10 +352,36 @@ def __convert_recipients_to_list(recipients_str):
     return recipients_str.translate(remove_chars_trans).split(',')
 
 
-def invoke_lambda(error_msg):
+def invoke_lambda(args):
 
     lambda_client = boto3.client('lambda', LAMBDA_REGION)
-    lambda_client.invoke(FunctionName=LAMBDA_NAME, Payload={"message": error_msg})
+    lambda_client.invoke(FunctionName=LAMBDA_NAME, Payload=json.dumps(args))
+
+
+def __email_validation():
+    logging.info('SMTP host given, authenticates login to the SMTP server')
+    if not (EMAIL_ACCOUNT and EMAIL_PASSWORD and EMAIL_RECIPIENTS):
+        logging.error('Missing at least one of the EMAIL environment variables')
+        sys.exit(1)
+
+    context = ssl.create_default_context()
+
+    try:
+        with smtplib.SMTP_SSL(EMAIL_SMTP, SSL_PORT, context=context) as server:
+            server.login(user=EMAIL_ACCOUNT, password=EMAIL_PASSWORD)
+    except smtplib.SMTPAuthenticationError:
+        logging.error('Could not login to the SMTP server with the given email account and password')
+        sys.exit(1)
+
+
+def send_notification(notification_message):
+    if EMAIL_SMTP:
+        send_email_alert(notification_message)
+        logging.error('Error occurred, alert email sent')
+
+    if LAMBDA_REGION:
+        invoke_lambda({"message": notification_message})
+        logging.error('Error occurred, lambda invoked')
 
 
 if __name__ == '__main__':
