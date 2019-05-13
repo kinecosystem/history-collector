@@ -15,11 +15,11 @@ import traceback
 import smtplib
 import ssl
 import boto3
+import psycopg2
 import json
 from botocore import UNSIGNED
 from botocore.client import Config
 from botocore.exceptions import ClientError
-import psycopg2
 from kin_base.stellarxdr.StellarXDR_const import ASSET_TYPE_NATIVE
 from xdrparser import parser
 
