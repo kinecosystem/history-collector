@@ -2,7 +2,7 @@ version: '3'
 
 services:
   history-etl:
-    image: kinecosystem/history-collector:20190314kin3
+    image: kinecosystem/history-collector:20190512kin3
     #network_mode: host  # for local db
     environment:
       POSTGRES_PASSWORD: ''
