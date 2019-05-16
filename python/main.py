@@ -21,11 +21,16 @@ from botocore.client import Config
 from botocore.exceptions import ClientError
 import psycopg2
 from xdrparser import parser
+from python.adapters.hc_storage_adapter import HistoryCollectorStorageAdapter
 
 # Get constants from env variables
 FIRST_FILE = os.environ['FIRST_FILE']
 PYTHON_PASSWORD = os.environ['PYTHON_PASSWORD']
 POSTGRES_HOST = os.environ['POSTGRES_HOST']
+AWS_ACCESS_KEY = os.environ['AWS_ACCESS_KEY']
+AWS_SECRET_KEY = os.environ['AWS_SECRET_KEY']
+S3_OUTPUT_BUCKET = os.environ['S3_OUTPUT_BUCKET']
+S3_OUTPUT_KEY_PREFIX = os.environ['S3_OUTPUT_KEY_PREFIX']
 KIN_ISSUER = os.environ['KIN_ISSUER']
 NETWORK_PASSPHARSE = os.environ['NETWORK_PASSPHRASE']
 MAX_RETRIES = int(os.environ['MAX_RETRIES'])
@@ -65,15 +70,6 @@ def setup_postgres():
     conn = psycopg2.connect("postgresql://python:{}@{}:5432/kin".format(PYTHON_PASSWORD, POSTGRES_HOST))
     logging.info('Successfully connected to the database')
     return conn
-
-
-def get_last_file_sequence(conn, cur):
-    """Get the sequence of the last file scanned."""
-    cur.execute('select * from lastfile;')
-    conn.commit()
-    last_file = cur.fetchone()[0]
-
-    return last_file
 
 
 def download_file(s3, file_name):
@@ -126,9 +122,13 @@ def get_result_dictionary(results):
     return results_dict
 
 
-def write_to_postgres(conn, cur, transactions, ledgers_dictionary, results_dictionary, file_name):
-    """Filter payment/creation operations and write them to the database."""
-    logging.info('Writing contents of file: {} to database'.format(file_name))
+def write_data(storage_adapter, transactions, ledgers_dictionary, results_dictionary, file_name):
+    """Filter payment/creation operations and write them to the storage."""
+    logging.info('Writing contents of file: {} to storage'.format(file_name))
+
+    payments_operations_list = []
+    creations_operations_list = []
+
     for transaction_history_entry in transactions:
         timestamp = ledgers_dictionary.get(transaction_history_entry['ledgerSeq'])
 
@@ -174,18 +174,21 @@ def write_to_postgres(conn, cur, transactions, ledgers_dictionary, results_dicti
                         except (KeyError, IndexError):
                             pass
 
-                        cur.execute("INSERT INTO payments VALUES (%s ,%s, %s, %s, %s, %s, %s, %s, %s, %s, to_timestamp(%s))",
-                                    (source,
-                                     destination,
-                                     amount,
-                                     memo,
-                                     tx_fee,
-                                     tx_charged_fee,
-                                     op_index,
-                                     tx_status,
-                                     op_status,
-                                     tx_hash,
-                                     timestamp))
+                        payments_operations_list.append(
+                            {
+                                'source': source,
+                                'destination': destination,
+                                'amount': amount,
+                                'memo': memo,
+                                'tx_fee': tx_fee,
+                                'tx_charged_fee': tx_charged_fee,
+                                'op_index': op_index,
+                                'tx_status': tx_status,
+                                'op_status': op_status,
+                                'tx_hash': tx_hash,
+                                'timestamp': timestamp
+                            }
+                        )
 
                 # Operation type 0 = Create account
                 elif tx_operation['body']['type'] == 0:
@@ -201,23 +204,24 @@ def write_to_postgres(conn, cur, transactions, ledgers_dictionary, results_dicti
                     except (KeyError, IndexError):
                         pass
 
-                    cur.execute("INSERT INTO creations VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, to_timestamp(%s));",
-                                (source,
-                                 destination,
-                                 balance,
-                                 memo,
-                                 tx_fee,
-                                 tx_charged_fee,
-                                 op_index,
-                                 tx_status,
-                                 op_status,
-                                 tx_hash,
-                                 timestamp))
+                    creations_operations_list.append(
+                        {
+                            'source': source,
+                            'destination': destination,
+                            'starting_balance': balance,
+                            'memo': memo,
+                            'tx_fee': tx_fee,
+                            'tx_charged_fee': tx_charged_fee,
+                            'op_index': op_index,
+                            'tx_status': tx_status,
+                            'op_status': op_status,
+                            'tx_hash': tx_hash,
+                            'timestamp': timestamp
+                        }
+                    )
 
-    # Update the 'lastfile' entry in the database
-    cur.execute("UPDATE lastfile SET name = %s", (file_name,))
-    conn.commit()
-    logging.info('Successfully wrote contents of file: {} to database'.format(file_name))
+    # Try saving data into storage as a single 'transaction'
+    storage_adapter.save(payments_operations_list, creations_operations_list, file_name)
 
 
 def get_new_file_sequence(old_file_name):
@@ -259,9 +263,9 @@ def main():
     if EMAIL_SMTP:
         __email_validation()
 
-    conn = setup_postgres()
-    cur = conn.cursor()
-    file_sequence = get_last_file_sequence(conn, cur)
+    storage_adapter = get_storage_adapter()
+
+    file_sequence = storage_adapter.get_last_file_sequence()
     if file_sequence != FIRST_FILE:
         # If restarted, getting next file in sequence as the last one was ingested
         file_sequence = get_new_file_sequence(file_sequence)
@@ -294,8 +298,8 @@ def main():
             os.remove('transactions-{}.xdr.gz'.format(file_sequence))
             os.remove('results-{}.xdr.gz'.format(file_sequence))
 
-            # Write the data to the postgres database
-            write_to_postgres(conn, cur, transactions, ledgers_dictionary, results_dictionary, file_sequence)
+            # Write the data to storage
+            write_data(storage_adapter, transactions, ledgers_dictionary, results_dictionary, file_sequence)
 
             # Get the name of the next file I should work on
             file_sequence = get_new_file_sequence(file_sequence)
@@ -382,6 +386,11 @@ def send_notification(notification_message):
     if LAMBDA_NAME:
         invoke_lambda({"message": notification_message})
         logging.error('Error occurred, lambda invoked')
+
+
+def get_storage_adapter():
+    # TODO: implelment - choose between boto3 or psycop g, implement as a factory?
+    return HistoryCollectorStorageAdapter()
 
 
 if __name__ == '__main__':
