@@ -30,6 +30,10 @@ def verify_file_sequence():
 def main():
     """Main entry point."""
     logging.basicConfig(level='INFO', format='%(asctime)s | %(levelname)s | %(message)s')
+    if not POSTGRES_HOST:
+        logging.info('Postgres is not being used as a storage for this run, skipping this script')
+        sys.exit(0)
+
     # Check if the database already exists
     try:
         setup_postgres(database='/kin')

@@ -3,12 +3,18 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 
 
+class HistoryCollectorStorageError(Exception):
+
+    def __init__(self, message):
+        super(HistoryCollectorStorageError, self).__init__(message)
+
+
 class HistoryCollectorStorageAdapter(ABC):
     def __init__(self):
         super().__init__()
         self.file_name = None
 
-    @abstractmethod
+     @abstractmethod
     def get_last_file_sequence(self):
         pass
 

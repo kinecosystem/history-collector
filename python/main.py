@@ -21,16 +21,17 @@ from botocore.client import Config
 from botocore.exceptions import ClientError
 import psycopg2
 from xdrparser import parser
-from python.adapters.hc_storage_adapter import HistoryCollectorStorageAdapter
+from python.adapters import *
 
 # Get constants from env variables
 FIRST_FILE = os.environ['FIRST_FILE']
 PYTHON_PASSWORD = os.environ['PYTHON_PASSWORD']
 POSTGRES_HOST = os.environ['POSTGRES_HOST']
-AWS_ACCESS_KEY = os.environ['AWS_ACCESS_KEY']
-AWS_SECRET_KEY = os.environ['AWS_SECRET_KEY']
-S3_OUTPUT_BUCKET = os.environ['S3_OUTPUT_BUCKET']
-S3_OUTPUT_KEY_PREFIX = os.environ['S3_OUTPUT_KEY_PREFIX']
+S3_STORAGE_AWS_ACCESS_KEY = os.environ['S3_STORAGE_AWS_ACCESS_KEY']
+S3_STORAGE_AWS_SECRET_KEY = os.environ['S3_STORAGE_AWS_SECRET_KEY']
+S3_STORAGE_BUCKET = os.environ['S3_STORAGE_BUCKET']
+S3_STORAGE_KEY_PREFIX = os.environ['S3_STORAGE_KEY_PREFIX']
+S3_STORAGE_REGION = os.environ['S3_STORAGE_REGION']
 KIN_ISSUER = os.environ['KIN_ISSUER']
 NETWORK_PASSPHARSE = os.environ['NETWORK_PASSPHRASE']
 MAX_RETRIES = int(os.environ['MAX_RETRIES'])
@@ -389,8 +390,27 @@ def send_notification(notification_message):
 
 
 def get_storage_adapter():
-    # TODO: implelment - choose between boto3 or psycop g, implement as a factory?
-    return HistoryCollectorStorageAdapter()
+    """
+    This function generates an instance of the right storage adapter according the docker-compose file.
+    It will also raise exception if configuration for both/none of the storage adapters were supplied.
+    Only one supported.
+    :return: An instance of the relevant storage adapter
+    """
+    # Validating supplied configuration
+    if POSTGRES_HOST and S3_STORAGE_BUCKET:
+        raise ValueError('Only one storage method is supported')
+
+    storage_adapter = None
+
+    if S3_STORAGE_BUCKET:
+        storage_adapter = S3StorageAdapter(S3_STORAGE_BUCKET, S3_STORAGE_KEY_PREFIX,
+                                           S3_STORAGE_AWS_ACCESS_KEY, S3_STORAGE_AWS_SECRET_KEY, S3_STORAGE_REGION)
+    elif POSTGRES_HOST:
+        storage_adapter = PostgresStorageAdapter(POSTGRES_HOST, PYTHON_PASSWORD)
+    else:
+        raise Exception('No storage method supplied')
+
+    return storage_adapter
 
 
 if __name__ == '__main__':

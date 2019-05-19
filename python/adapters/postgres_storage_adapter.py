@@ -6,7 +6,7 @@ from psycopg2.extras import execute_values
 
 class PostgresStorageAdapter(HistoryCollectorStorageAdapter):
 
-    def __init__(self, python_password, postgres_host):
+    def __init__(self, postgres_host, python_password):
         super().__init__()
         """Set up a connection to the postgres database using the user 'python'."""
         self.conn = psycopg2.connect("postgresql://python:{}@{}:5432/kin".format(python_password, postgres_host))
