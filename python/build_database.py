@@ -63,7 +63,7 @@ def main():
 
         # Create the tables
         cur = setup_postgres('/kin')
-
+        # TODO: change to dynamically create the tables according to the storage adapter
         cur.execute('CREATE TABLE payments('
                     'source varchar(56) not NULL,'
                     'destination varchar(56) not NULL,'

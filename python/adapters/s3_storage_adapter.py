@@ -50,9 +50,6 @@ class S3StorageAdapter(HistoryCollectorStorageAdapter):
         self.__save_to_s3(payments, self.payments_output_schema(), 'payment')
 
     def _save_creations(self, creations: list):
-        if creations:
-            print('exist')
-        logging.warning(creations)
         self.__save_to_s3(creations, self.creations_output_schema(), 'creation')
 
     def _commit(self):
@@ -111,7 +108,12 @@ class S3StorageAdapter(HistoryCollectorStorageAdapter):
             self.get_last_file_sequence()
             # Trying to write 'test' ledger, then delete it. Not using the 'save' method, as it will rewrite last_file
             self.file_name = 'test'
-            self._save_payments([])
+            self._save_creations([{'source': 'GCQTAWULBNFLBAEQLEN6FDGGCPYTVZ3Y55AB4F7HSTMQKNX3HZINMQJM',
+                                   'destination': 'GDDFYG3OSTSHADS7SP6TZ4XM62EQ522CI7UYJSNAETGJJCGOX66TP5Q5',
+                                   'starting_balance': 10.0, 'memo': None, 'tx_fee': 100, 'tx_charged_fee': 100,
+                                   'op_index': 0, 'tx_status': 'txFAILED', 'op_status': 'CREATE_ACCOUNT_LOW_RESERVE',
+                                   'tx_hash': 'a17aa64d4f0ae434dceb16501dd1d2217a59e42d555e24fdf7e17fffa13a1331',
+                                   'timestamp': datetime(2018, 6, 20, 12, 47, 21)}])
             self._rollback()
             self.file_name = None
         except Exception:
@@ -122,16 +124,25 @@ class S3StorageAdapter(HistoryCollectorStorageAdapter):
     def __save_to_s3(self, data, data_schema, data_type):
         """
         Gets the data and the type of it, and stores it in the right partition and hierarchy on S3.
+        If data is empty, we don't save empty file
         :param data: list of dictionaries, each dictionary is a records to be saved in csv format
         :param data_type: Helps partitioning the data. type could be payment/creation
         :return:
         """
 
+        # Skipping saving empty files.
+        if not data:
+            return
+
         # Converting the data into a dataframe. The columns will be sorted alphabetically
         pd_dataframe = pandas.DataFrame(data)
 
         # Arranging columns order according the schema if there's data and converting it to csv with no header or index
-        pd_dataframe = pd_dataframe[data_schema.keys()] if data else pd_dataframe
+        try:
+                pd_dataframe = pd_dataframe[data_schema.keys()]
+        except KeyError:
+            pass
+
         bytes_stream_csv = io.BytesIO(pd_dataframe.to_csv(header=False, index=False).encode('utf-8'))
 
         # Uploading the stream to S3 to the right hierarchy and right partition
