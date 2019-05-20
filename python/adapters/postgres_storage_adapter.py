@@ -22,26 +22,26 @@ class PostgresStorageAdapter(HistoryCollectorStorageAdapter):
 
         return last_file
 
-    def __save_payments(self, payments: list):
+    def _save_payments(self, payments: list):
         payments_columns = self.payments_output_schema().keys()
         execute_values(self.cursor,
                        'INSERT INTO payments ({columns}) values %s'.format(columns=', '.join(payments_columns)),
                        payments,
                        template=', '.join(['%({})s'.format(column) for column in payments_columns]))
 
-    def __save_creations(self, creations: list):
+    def _save_creations(self, creations: list):
         creations_columns = self.creations_output_schema().keys()
         execute_values(self.cursor,
                        'INSERT INTO creations ({columns}) values %s'.format(columns=', '.join(creations_columns)),
                        creations,
                        template=', '.join(['%({})s'.format(column) for column in creations_columns]))
 
-    def __commit(self):
+    def _commit(self):
         # Update the 'lastfile' entry in the storage
         self.cursor.execute("UPDATE lastfile SET name = %s", (self.file_name,))
         self.conn.commit()
 
-    def __rollback(self):
+    def _rollback(self):
         self.conn.rollback()
 
     @staticmethod

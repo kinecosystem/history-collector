@@ -176,19 +176,21 @@ def write_data(storage_adapter, transactions, ledgers_dictionary, results_dictio
                             pass
 
                         payments_operations_list.append(
-                            {
-                                'source': source,
-                                'destination': destination,
-                                'amount': amount,
-                                'memo': memo,
-                                'tx_fee': tx_fee,
-                                'tx_charged_fee': tx_charged_fee,
-                                'op_index': op_index,
-                                'tx_status': tx_status,
-                                'op_status': op_status,
-                                'tx_hash': tx_hash,
-                                'timestamp': timestamp
-                            }
+                            storage_adapter.convert_payment(
+                                {
+                                    'source': source,
+                                    'destination': destination,
+                                    'amount': amount,
+                                    'memo': memo,
+                                    'tx_fee': tx_fee,
+                                    'tx_charged_fee': tx_charged_fee,
+                                    'op_index': op_index,
+                                    'tx_status': tx_status,
+                                    'op_status': op_status,
+                                    'tx_hash': tx_hash,
+                                    'timestamp': timestamp
+                                }
+                            )
                         )
 
                 # Operation type 0 = Create account
@@ -206,19 +208,21 @@ def write_data(storage_adapter, transactions, ledgers_dictionary, results_dictio
                         pass
 
                     creations_operations_list.append(
-                        {
-                            'source': source,
-                            'destination': destination,
-                            'starting_balance': balance,
-                            'memo': memo,
-                            'tx_fee': tx_fee,
-                            'tx_charged_fee': tx_charged_fee,
-                            'op_index': op_index,
-                            'tx_status': tx_status,
-                            'op_status': op_status,
-                            'tx_hash': tx_hash,
-                            'timestamp': timestamp
-                        }
+                        storage_adapter.convert_creation(
+                            {
+                                'source': source,
+                                'destination': destination,
+                                'starting_balance': balance,
+                                'memo': memo,
+                                'tx_fee': tx_fee,
+                                'tx_charged_fee': tx_charged_fee,
+                                'op_index': op_index,
+                                'tx_status': tx_status,
+                                'op_status': op_status,
+                                'tx_hash': tx_hash,
+                                'timestamp': timestamp
+                            }
+                        )
                     )
 
     # Try saving data into storage as a single 'transaction'
