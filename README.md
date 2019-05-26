@@ -36,7 +36,7 @@ Edit the docker-compose file to configure it
 | LOG_LEVEL             | The level of logs to show, "INFO"/"ERROR"/"WARNING"                                                                                                                                                      |
 
 ## Usage:
-To run the service, simply clone the [docker-compose.yaml](https://github.com/kinecosystem/history-collector/raw/master/docker-compose.yaml]) file, edit the configurations
+To run the service, simply clone the [docker-compose.yaml](https://github.com/kinecosystem/history-collector/raw/master/docker-compose.yaml) file, edit the configurations
 and run
 ```bash
 $ sudo docker-compose up -d
