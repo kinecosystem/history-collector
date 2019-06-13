@@ -34,13 +34,14 @@ class HistoryCollectorStorageAdapter(ABC):
     def _rollback(self):
         pass
 
-    def convert_payment(self, payment: dict):
-        # Returning as is by default
-        return payment
+    @abstractmethod
+    def convert_payment(self, source, destination, amount, memo, tx_fee, tx_charged_fee, op_index, tx_status, op_status,
+                        tx_hash, timestamp):
+        pass
 
-    def convert_creation(self, creation: dict):
-        # Returning as is by default
-        return creation
+    def convert_creation(self, source, destination, balance, memo, tx_fee, tx_charged_fee, op_index, tx_status,
+                         op_status, tx_hash, timestamp):
+        pass
 
     def save(self, payments_operations_list: list, creations_operations_list: list, file_name: str):
         try:

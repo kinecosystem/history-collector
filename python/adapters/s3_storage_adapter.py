@@ -102,14 +102,38 @@ class S3StorageAdapter(HistoryCollectorStorageAdapter):
                 self.file_name))
             raise
 
-    def convert_payment(self, payment: dict):
+    def convert_payment(self, source, destination, amount, memo, tx_fee, tx_charged_fee, op_index, tx_status, op_status,
+                        tx_hash, timestamp):
         # Converting timestamp from int to utc time
+        payment = self.payments_output_schema().fromkeys()
+        payment['source'] = source,
+        payment['destination'] = destination,
+        payment['amount'] = amount,
+        payment['memo'] = memo,
+        payment['tx_fee'] = tx_fee,
+        payment['tx_charged_fee'] = tx_charged_fee,
+        payment['op_index'] = op_index,
+        payment['tx_status'] = tx_status,
+        payment['op_status'] = op_status,
+        payment['tx_hash'] = tx_hash,
         payment['timestamp'] = datetime.utcfromtimestamp(payment['timestamp'])
         payment['type'] = 'payment'
         return payment
 
-    def convert_creation(self, creation: dict):
+    def convert_creation(self, source, destination, balance, memo, tx_fee, tx_charged_fee, op_index, tx_status,
+                         op_status, tx_hash, timestamp):
         # Converting timestamp from int to utc time
+        creation = dict.fromkeys(self.creations_output_schema())
+        creation['source'] = source,
+        creation['destination'] = destination,
+        creation['amount'] = balance,
+        creation['memo'] = memo,
+        creation['tx_fee'] = tx_fee,
+        creation['tx_charged_fee'] = tx_charged_fee,
+        creation['op_index'] = op_index,
+        creation['tx_status'] = tx_status,
+        creation['op_status'] = op_status,
+        creation['tx_hash'] = tx_hash,
         creation['timestamp'] = datetime.utcfromtimestamp(creation['timestamp'])
         creation['type'] = 'creation'
         return creation
