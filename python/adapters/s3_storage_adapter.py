@@ -7,8 +7,8 @@ from datetime import datetime
 from python.adapters.hc_storage_adapter import HistoryCollectorStorageAdapter, HistoryCollectorStorageError
 
 LAST_FILE_NAME = 'last_file'
-COMPLETE_INDICATION = '__COMPLETED__'
 HC_ROOT_FOLDER = 'kin_history_collector/'
+COMPLETED_LEDGERS_DIR_NAME = 'completed_ledgers'
 DEFAULT_REGION = 'us-east-1'
 MAX_RETRIES = 3
 
@@ -24,9 +24,11 @@ class S3StorageAdapter(HistoryCollectorStorageAdapter):
         self.aws_secret_key = aws_secret_key if aws_secret_key != '' else None
         self.aws_region = region if region != '' else DEFAULT_REGION
         self.last_file_location = '{}{}'.format(self.full_key_prefix, LAST_FILE_NAME)
+        self.completion_indication_path ='{}{}/'.format(self.full_key_prefix, COMPLETED_LEDGERS_DIR_NAME)
         self.ledgers_prefix = '{}{}ledger='.format(self.full_key_prefix, 'ledgers/')
         self.s3_client = boto3.client('s3', aws_access_key_id=aws_access_key, aws_secret_access_key=aws_secret_key,
                                       region_name=region)
+        self.__init_operations_to_save()
         self.__test_connection()
         logging.info('Successfully connected to the storage')
 
@@ -40,6 +42,7 @@ class S3StorageAdapter(HistoryCollectorStorageAdapter):
 
         except Exception as e:
             logging.error('Error while getting the last file sequence {}'.format(e))
+            raise
 
         if not last_file_seq:
             raise HistoryCollectorStorageError('Could not obtain last file from S3')
@@ -47,18 +50,27 @@ class S3StorageAdapter(HistoryCollectorStorageAdapter):
         return last_file_seq
 
     def _save_payments(self, payments: list):
-        self.__save_to_s3(payments, self.payments_output_schema(), 'payment')
+        # Preparing
+        self.operations_to_save += payments
 
     def _save_creations(self, creations: list):
-        self.__save_to_s3(creations, self.creations_output_schema(), 'creation')
+        self.operations_to_save += creations
 
     def _commit(self):
         """
         Mark the ledger directory with a completed flag (using empty file) and also update the last file
         """
+
+        # Saving all operations of ledger
+        self.__save_to_s3()
+
+        # Marking completion of ledger
         self.s3_client.put_object(Body='', Bucket=self.bucket,
-                                  Key='{}{}/{}'.format(self.ledgers_prefix, self.file_name, COMPLETE_INDICATION))
+                                  Key='{}{}'.format(self.completion_indication_path, self.file_name))
         self.s3_client.put_object(Body=self.file_name, Bucket=self.bucket, Key=self.last_file_location)
+
+        # Empty operations to save
+        self.__init_operations_to_save()
 
     def _rollback(self):
         """
@@ -66,6 +78,7 @@ class S3StorageAdapter(HistoryCollectorStorageAdapter):
         """
 
         try:
+            self.__init_operations_to_save()
             is_all_deleted = False
             while not is_all_deleted:
                 # list_objects_v2 and delete_objects can handle up to 1000 objects at a time
@@ -75,12 +88,14 @@ class S3StorageAdapter(HistoryCollectorStorageAdapter):
                     raise RuntimeError(
                         'Could not complete rollback for ledger {}. S3 list_objects response error.'.format(
                             self.file_name))
-
-                s3_objects = [s3_object['Key'] for s3_object in res.get('Contents')]
-                self.__delete_objects(s3_objects)
+                if res.get('Contents'):
+                    s3_objects = [s3_object.get('Key') for s3_object in res.get('Contents')]
+                    self.__delete_objects(s3_objects)
 
                 # IsTruncated is True when there were more objects in the directory than list_objects_v2 could fetch
                 is_all_deleted = not res['IsTruncated']
+
+            self.__delete_objects(['{}{}'.format(self.completion_indication_path, self.file_name)])
 
         except Exception:
             logging.error('Error while rollback ledger {}. Failed clearing the whole ledger history'.format(
@@ -90,16 +105,41 @@ class S3StorageAdapter(HistoryCollectorStorageAdapter):
     def convert_payment(self, payment: dict):
         # Converting timestamp from int to utc time
         payment['timestamp'] = datetime.utcfromtimestamp(payment['timestamp'])
+        payment['type'] = 'payment'
         return payment
 
     def convert_creation(self, creation: dict):
         # Converting timestamp from int to utc time
         creation['timestamp'] = datetime.utcfromtimestamp(creation['timestamp'])
+        creation['type'] = 'creation'
         return creation
+
+    @staticmethod
+    def payments_output_schema():
+        """
+        :return: A dictionary of columns saved by the History collector. Key - name, Value - type
+        """
+
+        schema = HistoryCollectorStorageAdapter.payments_output_schema()
+        schema.update({'type': str})
+        return schema
+
+    @staticmethod
+    def creations_output_schema():
+        """
+        :return: A dictionary of columns saved by the History collector. Key - name, Value - type
+        """
+
+        schema = HistoryCollectorStorageAdapter.creations_output_schema()
+        schema.update({'type': str})
+        return schema
+
+    def __init_operations_to_save(self):
+        self.operations_to_save = []
 
     def __test_connection(self):
         """
-        Uses the given credential and simulates all the different actions, to verify permissions for all the actions.
+        Uses the given credential and simulates all the different actions, to verify permissions for them.
         Raises error if one of the actions fails.
         :return:
         """
@@ -114,6 +154,7 @@ class S3StorageAdapter(HistoryCollectorStorageAdapter):
                                    'op_index': 0, 'tx_status': 'txFAILED', 'op_status': 'CREATE_ACCOUNT_LOW_RESERVE',
                                    'tx_hash': 'a17aa64d4f0ae434dceb16501dd1d2217a59e42d555e24fdf7e17fffa13a1331',
                                    'timestamp': datetime(2018, 6, 20, 12, 47, 21)}])
+            self.__save_to_s3()
             self._rollback()
             self.file_name = None
         except Exception:
@@ -121,25 +162,23 @@ class S3StorageAdapter(HistoryCollectorStorageAdapter):
                           'Requires Read/Write/Delete permissions')
             raise
 
-    def __save_to_s3(self, data, data_schema, data_type):
+    def __save_to_s3(self):
         """
-        Gets the data and the type of it, and stores it in the right partition and hierarchy on S3.
+        Stores all the ledger's operations in the right partition and hierarchy on S3.
         If data is empty, we don't save empty file
-        :param data: list of dictionaries, each dictionary is a records to be saved in csv format
-        :param data_type: Helps partitioning the data. type could be payment/creation
         :return:
         """
 
         # Skipping saving empty files.
-        if not data:
+        if not self.operations_to_save:
             return
 
         # Converting the data into a dataframe. The columns will be sorted alphabetically
-        pd_dataframe = pandas.DataFrame(data)
+        pd_dataframe = pandas.DataFrame(self.operations_to_save)
 
         # Arranging columns order according the schema if there's data and converting it to csv with no header or index
         try:
-                pd_dataframe = pd_dataframe[data_schema.keys()]
+            pd_dataframe = pd_dataframe[self.payments_output_schema().keys()]
         except KeyError:
             pass
 
@@ -147,8 +186,8 @@ class S3StorageAdapter(HistoryCollectorStorageAdapter):
 
         # Uploading the stream to S3 to the right hierarchy and right partition
         self.s3_client.upload_fileobj(bytes_stream_csv, self.bucket,
-                                      '{prefix}{ledger}/type={data_type}/{ledger}_{data_type}.csv'.format(
-                                          prefix=self.ledgers_prefix, ledger=self.file_name, data_type=data_type))
+                                      '{prefix}{ledger}/{ledger}.csv'.format(
+                                          prefix=self.ledgers_prefix, ledger=self.file_name))
 
     def __delete_objects(self, list_of_objects):
         if list_of_objects:
@@ -157,7 +196,7 @@ class S3StorageAdapter(HistoryCollectorStorageAdapter):
             is_deleted = False
             while not is_deleted:
                 try:
-                    res = self.s3_client.delete_objects(Bucket='dev-kin-history-collector',
+                    res = self.s3_client.delete_objects(Bucket=self.bucket,
                                                         Delete={'Objects': [{'Key': key_name} for key_name in list_of_objects],
                                                                 'Quiet': True})
 
