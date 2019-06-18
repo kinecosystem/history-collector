@@ -7,10 +7,12 @@ from psycopg2.extras import execute_values
 
 class PostgresStorageAdapter(HistoryCollectorStorageAdapter):
 
-    def __init__(self, postgres_host, python_password):
+    def __init__(self, postgres_host, python_password, database='kin'):
         super().__init__()
         """Set up a connection to the postgres database using the user 'python'."""
-        self.conn = psycopg2.connect("postgresql://python:{}@{}:5432/kin".format(python_password, postgres_host))
+        # TODO: Allow passing port as a param
+        self.conn = psycopg2.connect("postgresql://python:{password}@{host}:5432/{database}".format(
+            password=python_password, host=postgres_host, database=database))
         self.cursor = self.conn.cursor()
         logging.info('Successfully connected to the database')
 
@@ -54,34 +56,34 @@ class PostgresStorageAdapter(HistoryCollectorStorageAdapter):
     def convert_payment(self, source, destination, amount, memo, tx_fee, tx_charged_fee, op_index, tx_status, op_status,
                         tx_hash, timestamp):
         payment = dict.fromkeys(self.payments_output_schema())
-        payment['source'] = source,
-        payment['destination'] = destination,
-        payment['amount'] = amount,
-        payment['memo_text'] = memo,
-        payment['fee'] = tx_fee,
-        payment['fee_charged'] = tx_charged_fee,
-        payment['operation_index'] = op_index,
-        payment['tx_status'] = tx_status,
-        payment['op_status'] = op_status,
-        payment['hash'] = tx_hash,
-        payment['time'] = datetime.fromtimestamp(timestamp)
+        payment['source'] = source
+        payment['destination'] = destination
+        payment['amount'] = amount
+        payment['memo_text'] = memo
+        payment['fee'] = tx_fee
+        payment['fee_charged'] = tx_charged_fee
+        payment['operation_index'] = op_index
+        payment['tx_status'] = tx_status
+        payment['op_status'] = op_status
+        payment['hash'] = tx_hash
+        payment['time'] = datetime.utcfromtimestamp(timestamp)
 
         return payment
 
     def convert_creation(self, source, destination, balance, memo, tx_fee, tx_charged_fee, op_index, tx_status,
                          op_status, tx_hash, timestamp):
         creation = dict.fromkeys(self.creations_output_schema())
-        creation['source'] = source,
-        creation['destination'] = destination,
-        creation['starting_balance'] = balance,
-        creation['memo_text'] = memo,
-        creation['fee'] = tx_fee,
-        creation['fee_charged'] = tx_charged_fee,
-        creation['operation_index'] = op_index,
-        creation['tx_status'] = tx_status,
-        creation['op_status'] = op_status,
-        creation['hash'] = tx_hash,
-        creation['time'] = datetime.fromtimestamp(timestamp)
+        creation['source'] = source
+        creation['destination'] = destination
+        creation['starting_balance'] = balance
+        creation['memo_text'] = memo
+        creation['fee'] = tx_fee
+        creation['fee_charged'] = tx_charged_fee
+        creation['operation_index'] = op_index
+        creation['tx_status'] = tx_status
+        creation['op_status'] = op_status
+        creation['hash'] = tx_hash
+        creation['time'] = datetime.utcfromtimestamp(timestamp)
 
         return creation
 

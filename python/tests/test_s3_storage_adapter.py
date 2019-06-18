@@ -1,6 +1,8 @@
 import pytest
 import boto3
 import botocore
+import random
+import string
 from unittest.mock import patch
 from python.adapters.s3_storage_adapter import S3StorageAdapter, COMPLETED_LEDGERS_DIR_NAME
 from datetime import datetime
@@ -156,14 +158,24 @@ def test_rollback(s3_storage_adapter_instance: S3StorageAdapter):
 
 def test_convert_payment(s3_storage_adapter_instance : S3StorageAdapter):
 
-    returned_dict = s3_storage_adapter_instance.convert_payment({'timestamp': 1535594286})
-    assert returned_dict == {'timestamp': datetime.strptime('2018-08-30 01:58:06', '%Y-%m-%d %H:%M:%S'), 'type': 'payment'}
+    payment = __generate_row_based_on_schema(s3_storage_adapter_instance.payments_output_schema())
+    payment['timestamp'] = 1535594286
+    del payment['type']
+    returned_dict = s3_storage_adapter_instance.convert_payment(*payment.values())
+    payment.update({'timestamp': datetime.strptime('2018-08-30 01:58:06', '%Y-%m-%d %H:%M:%S'),
+                    'type': 'payment'})
+    assert returned_dict == payment
 
 
-def test_convert_creations(s3_storage_adapter_instance : S3StorageAdapter):
+def test_convert_creations(s3_storage_adapter_instance: S3StorageAdapter):
 
-    returned_dict = s3_storage_adapter_instance.convert_payment({'timestamp': 1535594286})
-    assert returned_dict == {'timestamp': datetime.strptime('2018-08-30 01:58:06', '%Y-%m-%d %H:%M:%S'), 'type': 'payment'}
+    creation = __generate_row_based_on_schema(s3_storage_adapter_instance.creations_output_schema())
+    creation['timestamp'] = 1535594286
+    del creation['type']
+    returned_dict = s3_storage_adapter_instance.convert_creation(*creation.values())
+    creation.update({'timestamp': datetime.strptime('2018-08-30 01:58:06', '%Y-%m-%d %H:%M:%S'),
+                     'type': 'creation'})
+    assert returned_dict == creation
 
 
 def __put_file_on_s3(s3_storage_adapter_instance: S3StorageAdapter, key, string):
@@ -191,3 +203,25 @@ def __mock_make_api_call_fail_when_posting_complete(self, operation_name, kwarg)
         raise Exception('test')
 
     return reference_function(self, operation_name, kwarg)
+
+
+def __generate_row_based_on_schema(schema):
+    row_dict = {}
+
+    for column, column_type in schema.items():
+        value = None
+
+        if issubclass(column_type, str):
+            value = 'test' + random.choice(string.ascii_lowercase)
+        elif issubclass(column_type, int):
+            value = 1
+        elif issubclass(column_type, float):
+            value = 0.5
+        elif issubclass(column_type, datetime):
+            value = datetime.now()
+        else:
+            raise NotImplementedError('column type has no generator')
+
+        row_dict[column] = value
+
+    return row_dict

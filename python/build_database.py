@@ -3,8 +3,8 @@
 import os
 import sys
 import logging
-
 import psycopg2
+from python.adapters.postgres_storage_adapter import PostgresStorageAdapter
 
 # Get constants from env variables
 PYTHON_PASSWORD = os.environ['PYTHON_PASSWORD']
@@ -63,32 +63,9 @@ def main():
 
         # Create the tables
         cur = setup_postgres('/kin')
-        # TODO: change to dynamically create the tables according to the storage adapter
-        cur.execute('CREATE TABLE payments('
-                    'source varchar(56) not NULL,'
-                    'destination varchar(56) not NULL,'
-                    'amount FLOAT not NULL,'
-                    'memo_text varchar(28),'
-                    'fee INT not NULL,'
-                    'fee_charged INT not NULL,'
-                    'operation_index INT not NULL,'
-                    'tx_status text,'
-                    'op_status text,'
-                    'hash varchar(64) not NULL,'
-                    'time TIMESTAMP not NULL);')
+        cur.execute(__generate_table_creation('payments', PostgresStorageAdapter.payments_output_schema()))
 
-        cur.execute('CREATE TABLE creations('
-                    'source varchar(56) not NULL,'
-                    'destination varchar(56) not NULL,'
-                    'starting_balance FLOAT not NULL,'
-                    'memo_text varchar(28),'
-                    'fee INT not NULL,'
-                    'fee_charged INT not NULL,'
-                    'operation_index INT not NULL,'
-                    'tx_status text,'
-                    'op_status text,'
-                    'hash varchar(64) not NULL,'
-                    'time TIMESTAMP not NULL);')
+        cur.execute(__generate_table_creation('creations', PostgresStorageAdapter.creations_output_schema()))
 
         cur.execute('CREATE TABLE lastfile('
                     'name varchar(8) not NULL);')
@@ -110,6 +87,13 @@ def main():
     except:
         logging.error('Could not fully create database, please delete all data before retrying.')
         raise
+
+
+def __generate_table_creation(table_name, schema):
+    return 'CREATE TABLE {table_name}( {columns});'.format(
+        table_name=table_name,
+        columns=', '.join(['{name} {type}'.format(name=column, type=schema[column]) for column in schema])
+    )
 
 
 if __name__ == '__main__':
