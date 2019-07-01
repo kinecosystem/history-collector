@@ -15,6 +15,7 @@ def postgres_storage_adapter_instance(postgres_host, postgres_password, postgres
 
 def test_constructor_with_wrong_credentials(postgres_host, postgres_database_name):
 
+    # TODO: replace - use with pytest.raises(Exception): instead
     try:
         PostgresStorageAdapter(postgres_host, 'foo', postgres_database_name)
     except Exception as e:

@@ -39,6 +39,7 @@ class HistoryCollectorStorageAdapter(ABC):
                         tx_hash, timestamp):
         pass
 
+    @abstractmethod
     def convert_creation(self, source, destination, balance, memo, tx_fee, tx_charged_fee, op_index, tx_status,
                          op_status, tx_hash, timestamp):
         pass
