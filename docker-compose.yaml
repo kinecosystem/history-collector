@@ -4,6 +4,11 @@ services:
   history-etl:
     image: kinecosystem/history-collector:20190512kin2
     environment:
+      S3_STORAGE_BUCKET: ''
+      S3_STORAGE_KEY_PREFIX: ''
+      S3_STORAGE_AWS_ACCESS_KEY: ''
+      S3_STORAGE_AWS_SECRET_KEY: ''
+      S3_STORAGE_REGION: ''
       POSTGRES_PASSWORD: ''
       POSTGRES_HOST: ''
       PYTHON_PASSWORD: ''
