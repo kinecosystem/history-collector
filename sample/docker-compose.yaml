@@ -2,7 +2,7 @@ version: '3'
 
 services:
   history-etl:
-    image: kinecosystem/history-collector:20190512kin2
+    image: kinecosystem/history-collector:20190701kin2
     environment:
       S3_STORAGE_BUCKET: ''
       S3_STORAGE_KEY_PREFIX: ''
