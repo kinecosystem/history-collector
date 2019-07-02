@@ -67,7 +67,7 @@ class HistoryCollectorStorageAdapter(ABC):
         return {
             'source': str,
             'destination': str,
-            'amount': float,  # TODO: change for Kin3
+            'amount': int,
             'memo': str,
             'tx_fee': int,
             'tx_charged_fee': int,
@@ -87,7 +87,7 @@ class HistoryCollectorStorageAdapter(ABC):
         return {
             'source': str,
             'destination': str,
-            'starting_balance': float,  # TODO: change for Kin3
+            'starting_balance': int,
             'memo': str,
             'tx_fee': int,
             'tx_charged_fee': int,

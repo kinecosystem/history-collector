@@ -97,7 +97,7 @@ class PostgresStorageAdapter(HistoryCollectorStorageAdapter):
         return {
             'source': 'varchar(56) not NULL',
             'destination': 'varchar(56) not NULL',
-            'amount': 'FLOAT not NULL',  # TODO: change for Kin3
+            'amount': 'BIGINT not NULL',
             'memo_text': 'varchar(28)',
             'fee': 'INT not NULL',
             'fee_charged': 'INT not NULL',
@@ -118,7 +118,7 @@ class PostgresStorageAdapter(HistoryCollectorStorageAdapter):
         return {
             'source': 'varchar(56) not NULL',
             'destination': 'varchar(56) not NULL',
-            'starting_balance': 'FLOAT not NULL',  # TODO: change for Kin3
+            'starting_balance': 'BIGINT not NULL',
             'memo_text': 'varchar(28)',
             'fee': 'INT not NULL',
             'fee_charged': 'INT not NULL',
