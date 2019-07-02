@@ -24,6 +24,11 @@ Edit the docker-compose file to configure it
 
 |          Variable          | Description                                                                                                                                                                                                                     |
 |:--------------------------:|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| S3_STORAGE_AWS_ACCESS_KEY  | AWS Access Key ID : Optional - if not mentioned, uses default aws credentials on the server. User should have S3 Read/Write/Delete access
+| S3_STORAGE_AWS_SECRET_KEY  | AWS Secret Access Key - Used only if AWS Access Key ID supplied
+| S3_STORAGE_BUCKET          | S3 Bucket to use for output data
+| S3_STORAGE_KEY_PREFIX      | S3 prefix to which a default folder name will be appended. The all output will be stored there. Recommendation: end prefix with '/' 
+| S3_STORAGE_REGION          | Region of S3 bucket on AWS. If remain empty, region us-east-1 will be used by default
 | POSTGRES_PASSWORD          | Master password for the postgres database                                                                                                                                                                                       |
 | PYTHON_PASSWORD            | Password for the postgres user 'python' (will be created by the script)                                                                                                                                                                                                                                                                                                                                                                                       |
 | KIN_ISSUER                 | Issuer of the kin asset                                                                                                                                                                                                  |
