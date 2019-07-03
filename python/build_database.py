@@ -4,7 +4,7 @@ import os
 import sys
 import logging
 import psycopg2
-from python.adapters.postgres_storage_adapter import PostgresStorageAdapter
+from adapters.postgres_storage_adapter import PostgresStorageAdapter
 
 # Get constants from env variables
 PYTHON_PASSWORD = os.environ['PYTHON_PASSWORD']

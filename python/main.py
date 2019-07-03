@@ -21,7 +21,7 @@ from botocore.client import Config
 from botocore.exceptions import ClientError
 import psycopg2
 from xdrparser import parser
-from python.adapters import *
+from adapters import *
 
 # Get constants from env variables
 FIRST_FILE = os.environ['FIRST_FILE']

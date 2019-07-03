@@ -4,8 +4,8 @@ import os
 import sys
 import logging
 import boto3
-from python.adapters.s3_storage_adapter import S3StorageAdapter, LAST_FILE_NAME, DEFAULT_REGION, HC_ROOT_FOLDER
-from python.adapters.hc_storage_adapter import HistoryCollectorStorageError
+from adapters.s3_storage_adapter import S3StorageAdapter, LAST_FILE_NAME, DEFAULT_REGION, HC_ROOT_FOLDER
+from adapters.hc_storage_adapter import HistoryCollectorStorageError
 
 # Get constants from env variables
 FIRST_FILE = os.environ['FIRST_FILE']

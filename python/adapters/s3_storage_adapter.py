@@ -4,7 +4,7 @@ import time
 import io
 import pandas
 from datetime import datetime
-from python.adapters.hc_storage_adapter import HistoryCollectorStorageAdapter, HistoryCollectorStorageError
+from adapters.hc_storage_adapter import HistoryCollectorStorageAdapter, HistoryCollectorStorageError
 
 LAST_FILE_NAME = 'last_file'
 HC_ROOT_FOLDER = 'kin_history_collector/'
