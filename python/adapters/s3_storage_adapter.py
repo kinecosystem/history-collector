@@ -16,7 +16,7 @@ MAX_RETRIES = 3
 class S3StorageAdapter(HistoryCollectorStorageAdapter):
 
     def __init__(self, bucket, key_prefix, aws_access_key=None, aws_secret_key=None,
-                 region='us-east-1'):
+                 region='us-east-1', test_connection=True):
         super().__init__()
         self.bucket = bucket
         self.full_key_prefix = key_prefix + HC_ROOT_FOLDER
@@ -29,20 +29,25 @@ class S3StorageAdapter(HistoryCollectorStorageAdapter):
         self.s3_client = boto3.client('s3', aws_access_key_id=aws_access_key, aws_secret_access_key=aws_secret_key,
                                       region_name=region)
         self.__init_operations_to_save()
-        self.__test_connection()
+
+        if test_connection:
+            self.__test_connection()
+
         logging.info('Successfully connected to the storage')
 
     def get_last_file_sequence(self):
         """Get the sequence of the last file scanned. Using the last file object"""
 
-        last_file_seq = None
         try:
             last_file_object = self.s3_client.get_object(Bucket=self.bucket, Key=self.last_file_location)
             last_file_seq = last_file_object['Body'].read().decode('utf-8')
 
         except Exception as e:
-            logging.error('Error while getting the last file sequence {}'.format(e))
-            raise
+            if 'NoSuchKey' in str(e):
+                last_file_seq = None
+            else:
+                logging.error('Error while getting the last file sequence {}'.format(e))
+                raise
 
         if not last_file_seq:
             raise HistoryCollectorStorageError('Could not obtain last file from S3')
@@ -198,6 +203,8 @@ class S3StorageAdapter(HistoryCollectorStorageAdapter):
             return
 
         # Converting the data into a dataframe. The columns will be sorted alphabetically
+        # TODO: Use a different method to stream csv dataframe other than pandas and remove pandas from pipfile and
+        #  Dockerfile, as it really pumps the size of the docker image (from 150MB to 1GB)
         pd_dataframe = pandas.DataFrame(self.operations_to_save)
 
         # Arranging columns order according the schema if there's data and converting it to csv with no header or index
