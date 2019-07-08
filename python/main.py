@@ -22,7 +22,7 @@ from botocore.client import Config
 from botocore.exceptions import ClientError
 from kin_base.stellarxdr.StellarXDR_const import ASSET_TYPE_NATIVE
 from xdrparser import parser
-from python.adapters import *
+from adapters import *
 
 # Get constants from env variables
 FIRST_FILE = os.environ['FIRST_FILE']
