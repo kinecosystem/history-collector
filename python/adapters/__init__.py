@@ -1,3 +1,3 @@
-from python.adapters.hc_storage_adapter import HistoryCollectorStorageAdapter
-from python.adapters.postgres_storage_adapter import PostgresStorageAdapter
-from python.adapters.s3_storage_adapter import S3StorageAdapter
+from adapters.hc_storage_adapter import HistoryCollectorStorageAdapter
+from adapters.postgres_storage_adapter import PostgresStorageAdapter
+from adapters.s3_storage_adapter import S3StorageAdapter

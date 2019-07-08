@@ -1,7 +1,7 @@
 import psycopg2
 import logging
 from datetime import datetime
-from python.adapters.hc_storage_adapter import HistoryCollectorStorageAdapter
+from adapters.hc_storage_adapter import HistoryCollectorStorageAdapter
 from psycopg2.extras import execute_values
 
 

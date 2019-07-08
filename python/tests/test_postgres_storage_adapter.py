@@ -2,7 +2,7 @@ import pytest
 import re
 import random
 import string
-from python.adapters.postgres_storage_adapter import PostgresStorageAdapter
+from adapters.postgres_storage_adapter import PostgresStorageAdapter
 from datetime import datetime
 from psycopg2 import IntegrityError
 

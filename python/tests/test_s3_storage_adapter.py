@@ -4,7 +4,7 @@ import botocore
 import random
 import string
 from unittest.mock import patch
-from python.adapters.s3_storage_adapter import S3StorageAdapter, COMPLETED_LEDGERS_DIR_NAME
+from adapters.s3_storage_adapter import S3StorageAdapter, COMPLETED_LEDGERS_DIR_NAME
 from datetime import datetime
 
 
