@@ -4,8 +4,8 @@ import os
 import sys
 import logging
 import boto3
-from python.adapters.s3_storage_adapter import S3StorageAdapter, LAST_FILE_NAME, DEFAULT_REGION, HC_ROOT_FOLDER
-from python.adapters.hc_storage_adapter import HistoryCollectorStorageError
+from adapters.s3_storage_adapter import S3StorageAdapter, LAST_FILE_NAME, DEFAULT_REGION, HC_ROOT_FOLDER
+from adapters.hc_storage_adapter import HistoryCollectorStorageError
 
 # Get constants from env variables
 FIRST_FILE = os.environ['FIRST_FILE']
@@ -13,7 +13,7 @@ S3_STORAGE_AWS_ACCESS_KEY = os.environ['S3_STORAGE_AWS_ACCESS_KEY']
 S3_STORAGE_AWS_SECRET_KEY = os.environ['S3_STORAGE_AWS_SECRET_KEY']
 S3_STORAGE_BUCKET = os.environ['S3_STORAGE_BUCKET']
 S3_STORAGE_KEY_PREFIX = os.environ['S3_STORAGE_KEY_PREFIX']
-S3_STORAGE_REGION = os.environ['S3_STORAGE_REGION']
+S3_STORAGE_REGION = os.environ.get('S3_STORAGE_REGION', 'us-east-1')
 
 
 def verify_file_sequence():
