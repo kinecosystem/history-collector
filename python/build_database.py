@@ -43,7 +43,7 @@ def main():
         else:
             raise
     else:
-        logging.info('Using existing database instead of creating a new one')
+        logging.info('Using existing database')
         sys.exit(0)
 
     if verify_file_sequence() != 0:
@@ -58,14 +58,11 @@ def main():
         cur.execute('CREATE DATABASE {};'.format('kin'))
 
         # Create the user
-        cur.execute('CREATE USER python;')
-        cur.execute("ALTER USER python WITH PASSWORD '{}'".format(PYTHON_PASSWORD))
+        cur.execute("CREATE USER python WITH ENCRYPTED PASSWORD '{}';".format(PYTHON_PASSWORD))
 
         # Create the tables
         cur = setup_postgres('/kin')
-        cur.execute(__generate_table_creation('payments', PostgresStorageAdapter.payments_output_schema()))
-
-        cur.execute(__generate_table_creation('creations', PostgresStorageAdapter.creations_output_schema()))
+        cur.execute(__generate_table_creation('operations', PostgresStorageAdapter.operation_output_schema()))
 
         cur.execute('CREATE TABLE lastfile('
                     'name varchar(8) not NULL);')
@@ -74,13 +71,18 @@ def main():
         cur.execute("INSERT INTO lastfile VALUES(%s);", (FIRST_FILE,))
 
         # Grant the user access to the database
-        cur.execute('GRANT INSERT on payments TO python')
-        cur.execute('GRANT INSERT on creations TO python')
-        cur.execute('GRANT SELECT on payments TO python')
-        cur.execute('GRANT SELECT on creations TO python')
-        cur.execute('GRANT INSERT on lastfile TO python')
-        cur.execute('GRANT SELECT on lastfile TO python')
-        cur.execute('GRANT UPDATE on lastfile TO python')
+        cur.execute('GRANT SELECT, INSERT on operations TO python')
+        cur.execute('GRANT SELECT, INSERT, UPDATE on lastfile TO python')
+
+        cur.execute('CREATE INDEX by_account ON transactions USING btree (account, account_sequence);')
+        cur.execute('CREATE INDEX by_source ON transactions USING btree (source);')
+        cur.execute('CREATE INDEX by_destination ON transactions USING btree (destination);')
+        cur.execute('CREATE INDEX by_hash ON transactions USING btree (tx_hash);')
+        cur.execute('CREATE INDEX by_op_type ON transactions USING btree (op_type)')
+        cur.execute('CREATE UNIQUE INDEX by_op_in_tx_in_ledger ON transactions '
+                    'USING btree (ledger_sequence, tx_hash, op_order);')
+
+        # TODO: When the is_signed_by_app will be implemented, probably need to create a table for known apps accounts
 
         logging.info('Database created successfully.')
 
@@ -90,7 +92,7 @@ def main():
 
 
 def __generate_table_creation(table_name, schema):
-    return 'CREATE TABLE {table_name}( {columns});'.format(
+    return 'CREATE TABLE {table_name}( id BIGSERIAL PRIMARY KEY, {columns});'.format(
         table_name=table_name,
         columns=', '.join(['{name} {type}'.format(name=column, type=schema[column]) for column in schema])
     )

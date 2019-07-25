@@ -22,6 +22,7 @@ services:
       FIRST_FILE: '00203dff'
       NETWORK_PASSPHRASE: 'Public Global Kin Ecosystem Network ; June 2018'
       MAX_RETRIES: 5
+      RETRY_DELAY: 180
       BUCKET_NAME: 'stellar-core-ecosystem-6145'
       CORE_DIRECTORY: ''
       LOG_LEVEL: 'INFO'

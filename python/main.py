@@ -23,6 +23,7 @@ from botocore.exceptions import ClientError
 from kin_base.stellarxdr.StellarXDR_const import ASSET_TYPE_NATIVE
 from xdrparser import parser
 from adapters import *
+from utils import *
 
 # Get constants from env variables
 FIRST_FILE = os.environ['FIRST_FILE']
@@ -35,7 +36,7 @@ S3_STORAGE_KEY_PREFIX = os.environ['S3_STORAGE_KEY_PREFIX']
 S3_STORAGE_REGION = os.environ['S3_STORAGE_REGION']
 NETWORK_PASSPHARSE = os.environ['NETWORK_PASSPHRASE']
 MAX_RETRIES = int(os.environ['MAX_RETRIES'])
-BUCKET_NAME = os.environ['BUCKET_NAME']
+BUCKET_NAME = os.environ['BUCKET_NAME']  # TODO: Support list of buckets, so if one suffers a delay, use a different one
 LOG_LEVEL = os.environ['LOG_LEVEL']
 
 APP_ID = os.environ.get('APP_ID', None)
@@ -49,6 +50,12 @@ EMAIL_RECIPIENTS = os.environ.get('EMAIL_RECIPIENTS')
 LAMBDA_NAME = os.environ.get('LAMBDA_NAME')
 LAMBDA_REGION = os.environ.get('LAMBDA_REGION', 'us-east-1')
 
+RETRY_DELAY = os.environ.get('RETRY_DELAY')
+
+
+if FIRST_FILE and not verify_file_sequence(FIRST_FILE):
+    logging.error('Invalid first file')
+    sys.exit(1)
 
 # Add trailing / to core directory
 if CORE_DIRECTORY != '' and CORE_DIRECTORY[-1] != '/':
@@ -62,58 +69,48 @@ SSL_PORT = 465
 def setup_s3():
     """Set up the s3 client with anonymous connection."""
     s3 = boto3.client('s3', config=Config(signature_version=UNSIGNED))
-    logging.info('Successfully initialized S3 client')
+    logging.debug('Successfully initialized S3 client')
     return s3
 
 
 def setup_postgres():
     """Set up a connection to the postgres database using the user 'python'."""
     conn = psycopg2.connect("postgresql://python:{}@{}:5432/kin".format(PYTHON_PASSWORD, POSTGRES_HOST))
-    logging.info('Successfully connected to the database')
+    logging.debug('Successfully connected to the database')
     return conn
 
 
 def download_file(s3, file_name):
     """Download the files from the s3 bucket."""
-    # File transactions-004c93bf.xdr.gz will be in:
-    # BUCKET_NAME/CORE_DIRECTORY/transactions/00/4c/93/
 
-    # "ledger-004c93bf" > "00/4c/93/"
-    file_number = file_name.split('-')[-1]
-    sub_directory = '/'.join(file_number[i:i + 2] for i in range(0, len(file_number), 2))
-    sub_directory = sub_directory[:9]
-
-    sub_directory = file_name.split('-')[0] + '/' + sub_directory
+    subdir = get_s3_bucket_subdir(file_name)
 
     for attempt in range(MAX_RETRIES + 1):
         try:
-            logging.info('Trying to download file {}.xdr.gz'.format(file_name))
-            s3.download_file(BUCKET_NAME, CORE_DIRECTORY + sub_directory + file_name + '.xdr.gz', file_name + '.xdr.gz')
-            logging.info('File {} downloaded'.format(file_name))
+            logging.debug('Trying to download file {}.xdr.gz'.format(file_name))
+            s3.download_file(BUCKET_NAME, CORE_DIRECTORY + subdir + file_name + '.xdr.gz', file_name + '.xdr.gz')
+            logging.debug('File {} downloaded'.format(file_name))
             break
         except ClientError as e:
 
-            # If you failed to get the file more than MAX_RETRIES times: raise the exception
             if attempt == MAX_RETRIES:
                 logging.error('Reached retry limit when downloading file {}, raising exception.'.format(file_name))
                 raise
 
-            # If I get a 404, it might mean that the file does not exist yet, so I will try again in 3 minutes
+            # If got a 404, it might mean that the file does not exist yet, so I will try again after a delay
             error_code = int(e.response['Error']['Code'])
             if error_code == 404:
-                logging.warning('404, could not get file {}, retrying in 3 minutes'.format(file_name))
-                time.sleep(180)
+                logging.warning('404, file not found {}, retrying in {} seconds'.format(file_name, RETRY_DELAY))
+                time.sleep(RETRY_DELAY)
 
 
 def get_ledgers_dictionary(ledgers):
-    """Get a dictionary of a ledgerSequence and closing time."""
-    return {ledger['header']['ledgerSeq']: ledger['header']['scpValue']['closeTime'] for ledger in ledgers}
+    """Get a dictionary of ledgers."""
+    return {ledger['header']['ledgerSeq']: ledger['header'] for ledger in ledgers}
 
 
 def get_result_dictionary(results):
-    """Get a dictionary of a transaction hash and its result"""
-    #return {result['txResultSet']['results'][0]['transactionHash']:
-    #        result['txResultSet']['results'][0]['result'] for result in results}
+    """Get a dictionary of transaction results."""
 
     results_dict = {}
     for result in results:
@@ -123,107 +120,67 @@ def get_result_dictionary(results):
     return results_dict
 
 
+def get_app_id(tx_memo):
+    """Get app_id from transaction memo."""
+    if APP_ID_REGEX.match(str(tx_memo)):
+        return tx_memo.split('-')[1]
+    return None
+
+
 def write_data(storage_adapter, transactions, ledgers_dictionary, results_dictionary, file_name):
     """Filter payment/creation operations and write them to the storage."""
-    logging.info('Writing contents of file: {} to storage'.format(file_name))
+    logging.debug('Writing contents of file: {} to storage'.format(file_name))
 
-    payments_operations_list = []
-    creations_operations_list = []
+    operations_list = []
 
     for transaction_history_entry in transactions:
-        timestamp = ledgers_dictionary.get(transaction_history_entry['ledgerSeq'])
+        ledger_sequence = transaction_history_entry['ledgerSeq']  # TODO: do we want to change it to BigInt?
+        ledger = ledgers_dictionary.get(ledger_sequence)
+        ledger_timestamp = ledger['scpValue']['closeTime']
 
-        for transaction in transaction_history_entry['txSet']['txs']:
+        for tx_order, transaction in enumerate(transaction_history_entry['txSet']['txs']):
             # Find the results of this tx based on its hash
-            results = results_dictionary.get(transaction['hash'])
-            memo = transaction['tx']['memo']['text']
+            tx_hash = transaction['hash']
+            tx_result = results_dictionary.get(tx_hash)
+            tx_memo = transaction['tx']['memo']['text']
 
-            # If the transaction is not from our app, skip it
-            if APP_ID is not None:
-                if APP_ID_REGEX.match(str(memo)) is not None:
-                    app = memo.split('-')[1]
-                    if app != APP_ID:
-                        continue
-                else:
+            # If app filter is defined and the transaction is not from our app, skip it
+            if APP_ID and get_app_id(tx_memo) != APP_ID:
+                continue
+
+            tx_account = transaction['tx']['sourceAccount']['ed25519']
+            tx_account_sequence = transaction['tx']['seqNum']
+            tx_fee = transaction['tx']['fee']
+            tx_charged_fee = tx_result['feeCharged']
+            tx_status = tx_result['result']['code']  # txSUCCESS/FAILED/BAD_AUTH etc
+
+            for op_order, (tx_operation, result_operation) in enumerate(zip(transaction['tx']['operations'], tx_result['result'].get('results', []))):
+
+                operation = get_operation_object(tx_operation)
+                if not operation:
+                    logging.warning('Unhandled operations ({type})- {operation}'.format(
+                        type=OperationType(tx_operation['body']['type']), operation=tx_operation))
                     continue
 
-            tx_hash = transaction['hash']
-            tx_fee = transaction['tx']['fee']
-            tx_charged_fee = results['feeCharged']
-            tx_status = results['result']['code']  # txSUCCESS/FAILED/BAD_AUTH etc
+                # Skipping any payments that aren't native, if there are any
+                if tx_operation['body']['paymentOp']['asset']['type'] != ASSET_TYPE_NATIVE:
+                    continue
 
-            for op_index, (tx_operation, result_operation) in enumerate(zip(transaction['tx']['operations'], results['result'].get('results', []))):
+                # If no operation source available, use the tx source
+                source = operation.get_source()
+                if not source:
+                    source = tx_account
 
-                op_status = None
+                is_signed_by_app = None  # TODO: next version
 
-                # Operation type 1 = Payment
-                if tx_operation['body']['type'] == 1:
-                    # Check if its a native payment
-                    if tx_operation['body']['paymentOp']['asset']['type'] == ASSET_TYPE_NATIVE:
-
-                        source = transaction['tx']['sourceAccount']['ed25519']
-                        destination = tx_operation['body']['paymentOp']['destination']['ed25519']
-                        amount = tx_operation['body']['paymentOp']['amount']
-                        if result_operation:
-                            op_status = result_operation['tr']['paymentResult']['code']
-
-                        # Override the tx source with the operation source if it exists
-                        try:
-                            source = tx_operation['sourceAccount'][0]['ed25519']
-                        except (KeyError, IndexError):
-                            pass
-
-                        payments_operations_list.append(
-                            storage_adapter.convert_payment(source, destination, amount, memo, tx_fee,
-                                                            tx_charged_fee, op_index, tx_status, op_status,
-                                                            tx_hash, timestamp))
-
-                # Operation type 0 = Create account
-                elif tx_operation['body']['type'] == 0:
-                    source = transaction['tx']['sourceAccount']['ed25519']
-                    destination = tx_operation['body']['createAccountOp']['destination']['ed25519']
-                    balance = tx_operation['body']['createAccountOp']['startingBalance']
-                    if result_operation:
-                        op_status = result_operation['tr']['createAccountResult']['code']
-
-                    # Override the tx source with the operation source if it exists
-                    try:
-                        source = tx_operation['sourceAccount'][0]['ed25519']
-                    except (KeyError, IndexError):
-                        pass
-
-                    creations_operations_list.append(
-                        storage_adapter.convert_creation(source, destination, balance, memo, tx_fee, tx_charged_fee,
-                                                         op_index, tx_status, op_status, tx_hash, timestamp))
+                operations_list.append(storage_adapter.convert_operation(
+                    source, operation.get_destination(), operation.get_amount(), tx_order, tx_memo, tx_account,
+                    tx_account_sequence, tx_fee, tx_charged_fee, tx_status, tx_hash, op_order, operation.get_status(),
+                    operation.get_type(), ledger_timestamp, is_signed_by_app, file_name, ledger_sequence)
+                )
 
     # Try saving data into storage as a single 'transaction'
-    storage_adapter.save(payments_operations_list, creations_operations_list, file_name)
-
-
-def get_new_file_sequence(old_file_name):
-    """
-    Return the name of the next file to scan.
-
-    Transaction files are stored with an ascending hexadecimal name, for example:
-    └── transactions
-    └── 00
-        └── 72
-            ├── 6a
-            │   ├── transactions-00726a3f.xdr.gz
-            │   ├── transactions-00726a7f.xdr.gz
-            │   ├── transactions-00726abf.xdr.gz
-            │   └── transactions-00726aff.xdr.gz
-
-    So get the sequence of the last file scanned > convert to decimal > add 64 > convert back to hex >
-    remove the '0x' prefix > and add '0' until the file name is 8 letters long
-    """
-    new_file_name = int(old_file_name, 16)
-    new_file_name = new_file_name + 64
-    new_file_name = hex(new_file_name)
-    new_file_name = new_file_name.replace('0x', '')
-    new_file_name = '0' * (8 - len(new_file_name)) + new_file_name
-
-    return new_file_name
+    storage_adapter.save(operations_list, file_name)
 
 
 def main():
@@ -269,7 +226,7 @@ def main():
             results_dictionary = get_result_dictionary(results)
 
             # Remove the files from storage
-            logging.info('Removing downloaded files.')
+            logging.debug('Removing downloaded files.')
             os.remove('ledger-{}.xdr.gz'.format(file_sequence))
             os.remove('transactions-{}.xdr.gz'.format(file_sequence))
             os.remove('results-{}.xdr.gz'.format(file_sequence))
@@ -302,8 +259,8 @@ def main():
                 send_notification(traceback.format_exc())
                 raise
 
-            logging.info('Retrying in 3 minutes')
-            time.sleep(180)
+            logging.info('Retrying in {} seconds'.format(RETRY_DELAY))
+            time.sleep(RETRY_DELAY)
             consecutive_failed_attempts += 1
 
 
@@ -339,7 +296,7 @@ def invoke_lambda(args):
 
 
 def __email_validation():
-    logging.info('SMTP host given, authenticates login to the SMTP server')
+    logging.debug('SMTP host given, authenticates login to the SMTP server')
     if not (EMAIL_ACCOUNT and EMAIL_PASSWORD and EMAIL_RECIPIENTS):
         logging.error('Missing at least one of the EMAIL environment variables')
         sys.exit(1)

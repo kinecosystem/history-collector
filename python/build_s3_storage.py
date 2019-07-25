@@ -34,7 +34,7 @@ def main():
         storage_adapter = S3StorageAdapter(S3_STORAGE_BUCKET, S3_STORAGE_KEY_PREFIX, S3_STORAGE_AWS_ACCESS_KEY,
                                            S3_STORAGE_AWS_SECRET_KEY, S3_STORAGE_REGION)
 
-        logging.info('Using existing S3 storage instead of creating a new one')
+        logging.info('Using existing S3 storage')
         sys.exit(0)
 
     except HistoryCollectorStorageError:
@@ -62,7 +62,7 @@ def setup_s3_storage():
         last_file_location = '{}{}'.format(full_key_prefix, LAST_FILE_NAME)
         s3_client.put_object(Body=FIRST_FILE, Bucket=S3_STORAGE_BUCKET, Key=last_file_location)
 
-        logging.info('Storage created successfully.')
+        logging.debug('Storage created successfully.')
 
     except Exception:
         logging.error('Could not fully create storage, please delete all data before retrying.')

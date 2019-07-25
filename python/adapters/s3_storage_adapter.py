@@ -28,12 +28,11 @@ class S3StorageAdapter(HistoryCollectorStorageAdapter):
         self.ledgers_prefix = '{}{}ledger='.format(self.full_key_prefix, 'ledgers/')
         self.s3_client = boto3.client('s3', aws_access_key_id=aws_access_key, aws_secret_access_key=aws_secret_key,
                                       region_name=region)
-        self.__init_operations_to_save()
 
         if test_connection:
             self.__test_connection()
 
-        logging.info('Successfully connected to the storage')
+        logging.debug('Successfully connected to the storage')
 
     def get_last_file_sequence(self):
         """Get the sequence of the last file scanned. Using the last file object"""
@@ -54,12 +53,9 @@ class S3StorageAdapter(HistoryCollectorStorageAdapter):
 
         return last_file_seq
 
-    def _save_payments(self, payments: list):
+    def _save_operations(self, operations):
         # Preparing
-        self.operations_to_save += payments
-
-    def _save_creations(self, creations: list):
-        self.operations_to_save += creations
+        self.operations_to_save = operations
 
     def _commit(self):
         """
@@ -74,16 +70,12 @@ class S3StorageAdapter(HistoryCollectorStorageAdapter):
                                   Key='{}{}'.format(self.completion_indication_path, self.file_name))
         self.s3_client.put_object(Body=self.file_name, Bucket=self.bucket, Key=self.last_file_location)
 
-        # Empty operations to save
-        self.__init_operations_to_save()
-
     def _rollback(self):
         """
         Deletes all objects created for the specific ledger
         """
 
         try:
-            self.__init_operations_to_save()
             is_all_deleted = False
             while not is_all_deleted:
                 # list_objects_v2 and delete_objects can handle up to 1000 objects at a time
@@ -107,64 +99,31 @@ class S3StorageAdapter(HistoryCollectorStorageAdapter):
                 self.file_name))
             raise
 
-    def convert_payment(self, source, destination, amount, memo, tx_fee, tx_charged_fee, op_index, tx_status, op_status,
-                        tx_hash, timestamp):
-        # Converting timestamp from int to utc time
-        payment = dict.fromkeys(self.payments_output_schema())
-        payment['source'] = source
-        payment['destination'] = destination
-        payment['amount'] = amount
-        payment['memo'] = memo
-        payment['tx_fee'] = tx_fee
-        payment['tx_charged_fee'] = tx_charged_fee
-        payment['op_index'] = op_index
-        payment['tx_status'] = tx_status
-        payment['op_status'] = op_status
-        payment['tx_hash'] = tx_hash
-        payment['timestamp'] = datetime.utcfromtimestamp(timestamp)
-        payment['type'] = 'payment'
-        return payment
+    def convert_operation(self, source, destination, amount, tx_order, tx_memo, tx_account, tx_account_sequence,
+                          tx_fee, tx_charged_fee, tx_status, tx_hash, op_order, op_status, op_type, timestamp,
+                          is_signed_by_app, ledger_file_name, ledger_sequence):
 
-    def convert_creation(self, source, destination, balance, memo, tx_fee, tx_charged_fee, op_index, tx_status,
-                         op_status, tx_hash, timestamp):
-        # Converting timestamp from int to utc time
-        creation = dict.fromkeys(self.creations_output_schema())
-        creation['source'] = source
-        creation['destination'] = destination
-        creation['starting_balance'] = balance
-        creation['memo'] = memo
-        creation['tx_fee'] = tx_fee
-        creation['tx_charged_fee'] = tx_charged_fee
-        creation['op_index'] = op_index
-        creation['tx_status'] = tx_status
-        creation['op_status'] = op_status
-        creation['tx_hash'] = tx_hash
-        creation['timestamp'] = datetime.utcfromtimestamp(timestamp)
-        creation['type'] = 'creation'
-        return creation
+        operation = dict.fromkeys(self.operation_output_schema())
+        operation['source'] = source,
+        operation['destination'] = destination,
+        operation['amount'] = amount,
+        operation['tx_order'] = tx_order,
+        operation['tx_memo'] = tx_memo,
+        operation['tx_account'] = tx_account,
+        operation['tx_account_sequence'] = tx_account_sequence,
+        operation['tx_fee'] = tx_fee,
+        operation['tx_charged_fee'] = tx_charged_fee,
+        operation['tx_status'] = tx_status,
+        operation['tx_hash'] = tx_hash,
+        operation['op_order'] = op_order,
+        operation['op_status'] = op_status,
+        operation['op_type'] = op_type
+        operation['timestamp'] = datetime.utcfromtimestamp(timestamp),
+        operation['is_signed_by_app'] = is_signed_by_app,
+        operation['ledger_file_name'] = ledger_file_name,
+        operation['ledger_sequence'] = ledger_sequence
 
-    @staticmethod
-    def payments_output_schema():
-        """
-        :return: A dictionary of columns saved by the History collector. Key - name, Value - type
-        """
-
-        schema = HistoryCollectorStorageAdapter.payments_output_schema()
-        schema.update({'type': str})
-        return schema
-
-    @staticmethod
-    def creations_output_schema():
-        """
-        :return: A dictionary of columns saved by the History collector. Key - name, Value - type
-        """
-
-        schema = HistoryCollectorStorageAdapter.creations_output_schema()
-        schema.update({'type': str})
-        return schema
-
-    def __init_operations_to_save(self):
-        self.operations_to_save = []
+        return operation
 
     def __test_connection(self):
         """
@@ -177,12 +136,12 @@ class S3StorageAdapter(HistoryCollectorStorageAdapter):
             self.get_last_file_sequence()
             # Trying to write 'test' ledger, then delete it. Not using the 'save' method, as it will rewrite last_file
             self.file_name = 'test'
-            self._save_creations([{'source': 'GCQTAWULBNFLBAEQLEN6FDGGCPYTVZ3Y55AB4F7HSTMQKNX3HZINMQJM',
-                                   'destination': 'GDDFYG3OSTSHADS7SP6TZ4XM62EQ522CI7UYJSNAETGJJCGOX66TP5Q5',
-                                   'starting_balance': 10.0, 'memo': None, 'tx_fee': 100, 'tx_charged_fee': 100,
-                                   'op_index': 0, 'tx_status': 'txFAILED', 'op_status': 'CREATE_ACCOUNT_LOW_RESERVE',
-                                   'tx_hash': 'a17aa64d4f0ae434dceb16501dd1d2217a59e42d555e24fdf7e17fffa13a1331',
-                                   'timestamp': datetime(2018, 6, 20, 12, 47, 21)}])
+            self._save_operations([{'source': 'GCQTAWULBNFLBAEQLEN6FDGGCPYTVZ3Y55AB4F7HSTMQKNX3HZINMQJM',
+                                    'destination': 'GDDFYG3OSTSHADS7SP6TZ4XM62EQ522CI7UYJSNAETGJJCGOX66TP5Q5',
+                                    'starting_balance': 10.0, 'memo': None, 'tx_fee': 100, 'tx_charged_fee': 100,
+                                    'op_index': 0, 'tx_status': 'txFAILED', 'op_status': 'CREATE_ACCOUNT_LOW_RESERVE',
+                                    'tx_hash': 'a17aa64d4f0ae434dceb16501dd1d2217a59e42d555e24fdf7e17fffa13a1331',
+                                    'timestamp': datetime(2018, 6, 20, 12, 47, 21)}])
             self.__save_to_s3()
             self._rollback()
             self.file_name = None
@@ -209,7 +168,7 @@ class S3StorageAdapter(HistoryCollectorStorageAdapter):
 
         # Arranging columns order according the schema if there's data and converting it to csv with no header or index
         try:
-            pd_dataframe = pd_dataframe[self.payments_output_schema().keys()]
+            pd_dataframe = pd_dataframe[self.operation_output_schema().keys()]
         except KeyError:
             pass
 
