@@ -104,24 +104,31 @@ class S3StorageAdapter(HistoryCollectorStorageAdapter):
                           is_signed_by_app, ledger_file_name, ledger_sequence):
 
         operation = dict.fromkeys(self.operation_output_schema())
-        operation['source'] = source,
-        operation['destination'] = destination,
-        operation['amount'] = amount,
-        operation['tx_order'] = tx_order,
-        operation['tx_memo'] = tx_memo,
-        operation['tx_account'] = tx_account,
-        operation['tx_account_sequence'] = tx_account_sequence,
-        operation['tx_fee'] = tx_fee,
-        operation['tx_charged_fee'] = tx_charged_fee,
-        operation['tx_status'] = tx_status,
-        operation['tx_hash'] = tx_hash,
-        operation['op_order'] = op_order,
-        operation['op_status'] = op_status,
+        operation['source'] = source
+        operation['destination'] = destination
+        operation['amount'] = amount
+        operation['tx_order'] = tx_order
+        operation['tx_memo'] = tx_memo
+        operation['tx_account'] = tx_account
+        operation['tx_account_sequence'] = tx_account_sequence
+        operation['tx_fee'] = tx_fee
+        operation['tx_charged_fee'] = tx_charged_fee
+        operation['tx_status'] = tx_status
+        operation['tx_hash'] = tx_hash
+        operation['op_order'] = op_order
+        operation['op_status'] = op_status
         operation['op_type'] = op_type
-        operation['timestamp'] = datetime.utcfromtimestamp(timestamp),
-        operation['is_signed_by_app'] = is_signed_by_app,
-        operation['ledger_file_name'] = ledger_file_name,
+        operation['timestamp'] = datetime.utcfromtimestamp(timestamp)
+        operation['is_signed_by_app'] = is_signed_by_app
+        operation['ledger_file_name'] = ledger_file_name
         operation['ledger_sequence'] = ledger_sequence
+
+        # Fields that could possibly contain the separator character, should be enclosed in double-quotes, and each
+        #  double-quote inside should have a preceding double-quote
+        fields_to_format = ['tx_memo']
+        for field in fields_to_format:
+            escaped_value = operation[field].replace('"', '""')
+            operation[field] = '"{}"'.format(escaped_value)
 
         return operation
 
@@ -136,12 +143,12 @@ class S3StorageAdapter(HistoryCollectorStorageAdapter):
             self.get_last_file_sequence()
             # Trying to write 'test' ledger, then delete it. Not using the 'save' method, as it will rewrite last_file
             self.file_name = 'test'
-            self._save_operations([{'source': 'GCQTAWULBNFLBAEQLEN6FDGGCPYTVZ3Y55AB4F7HSTMQKNX3HZINMQJM',
-                                    'destination': 'GDDFYG3OSTSHADS7SP6TZ4XM62EQ522CI7UYJSNAETGJJCGOX66TP5Q5',
-                                    'starting_balance': 10.0, 'memo': None, 'tx_fee': 100, 'tx_charged_fee': 100,
-                                    'op_index': 0, 'tx_status': 'txFAILED', 'op_status': 'CREATE_ACCOUNT_LOW_RESERVE',
-                                    'tx_hash': 'a17aa64d4f0ae434dceb16501dd1d2217a59e42d555e24fdf7e17fffa13a1331',
-                                    'timestamp': datetime(2018, 6, 20, 12, 47, 21)}])
+            self._save_operations([{'source': 'JUST_A_TEST',
+                                   'destination': 'DESTINATION_TEST',
+                                   'starting_balance': 10.0, 'memo': None, 'tx_fee': 100, 'tx_charged_fee': 100,
+                                   'op_index': 0, 'tx_status': 'txFAILED', 'op_status': 'CREATE_ACCOUNT_LOW_RESERVE',
+                                   'tx_hash': 'testa64d4f0ae434dceb16501dd1d2217a59e42d555e24fdf7e17fffa13atest',
+                                   'timestamp': datetime(2018, 6, 20, 12, 47, 21)}])
             self.__save_to_s3()
             self._rollback()
             self.file_name = None

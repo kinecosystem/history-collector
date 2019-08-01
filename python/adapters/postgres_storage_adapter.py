@@ -48,23 +48,23 @@ class PostgresStorageAdapter(HistoryCollectorStorageAdapter):
                           is_signed_by_app, ledger_file_name, ledger_sequence):
 
         operation = dict.fromkeys(self.operation_output_schema())
-        operation['source'] = source,
-        operation['destination'] = destination,
-        operation['amount'] = amount,
-        operation['tx_order'] = tx_order,
-        operation['tx_memo'] = tx_memo,
-        operation['tx_account'] = tx_account,
-        operation['tx_account_sequence'] = tx_account_sequence,
-        operation['tx_fee'] = tx_fee,
-        operation['tx_charged_fee'] = tx_charged_fee,
-        operation['tx_status'] = tx_status,
-        operation['tx_hash'] = tx_hash,
-        operation['op_order'] = op_order,
-        operation['op_status'] = op_status,
+        operation['source'] = source
+        operation['destination'] = destination
+        operation['amount'] = amount
+        operation['tx_order'] = tx_order
+        operation['tx_memo'] = tx_memo
+        operation['tx_account'] = tx_account
+        operation['tx_account_sequence'] = tx_account_sequence
+        operation['tx_fee'] = tx_fee
+        operation['tx_charged_fee'] = tx_charged_fee
+        operation['tx_status'] = tx_status
+        operation['tx_hash'] = tx_hash
+        operation['op_order'] = op_order
+        operation['op_status'] = op_status
         operation['op_type'] = op_type
-        operation['timestamp'] = datetime.utcfromtimestamp(timestamp),
-        operation['is_signed_by_app'] = is_signed_by_app,
-        operation['ledger_file_name'] = ledger_file_name,
+        operation['timestamp'] = datetime.utcfromtimestamp(timestamp)
+        operation['is_signed_by_app'] = is_signed_by_app
+        operation['ledger_file_name'] = ledger_file_name
         operation['ledger_sequence'] = ledger_sequence
 
         return operation

@@ -3,29 +3,9 @@
 
 """history-collector utilities"""
 
-from enum import Enum, unique
+from enums import OperationType
+from kin_base.stellarxdr.StellarXDR_const import ASSET_TYPE_NATIVE
 import operations
-
-
-@unique
-class OperationType(Enum):
-    # https://www.stellar.org/developers/horizon/reference/resources/operation.html
-    CREATE_ACCOUNT = 0
-    PAYMENT = 1
-    PATH_PAYMENT = 2
-    MANAGE_OFFER = 3
-    CREATE_PASSIVE_OFFER = 4
-    SET_OPTIONS = 5
-    CHANGE_TRUST = 6
-    ALLOW_TRUST = 7
-    ACCOUNT_MERGE = 8
-    INFLATION = 9
-    MANAGE_DATA = 10
-    BUMP_SEQUENCE = 11
-
-    def __str__(self):
-        """By default, enum prefixes members with the class name, i.e. OperationType.PAYMENT. Remove the prefix."""
-        return self.name
 
 
 def verify_file_sequence(sequence):
@@ -70,17 +50,18 @@ def get_s3_bucket_subdir(file_name):
     return subdir
 
 
-def get_operation_object(tx_operation):
+def get_operation_object(tx_operation, op_result):
 
     op_type = OperationType(tx_operation['body']['type'])
+    operation_object = None
 
     if op_type == OperationType.CREATE_ACCOUNT:
-        operation_object = operations.CreationOperation(tx_operation)
+        operation_object = operations.CreationOperation(tx_operation, op_result)
     elif op_type == OperationType.PAYMENT:
-        operation_object = operations.PaymentOperation(tx_operation)
+        # Handling only native payments
+        if tx_operation['body']['paymentOp']['asset']['type'] == ASSET_TYPE_NATIVE:
+            operation_object = operations.PaymentOperation(tx_operation, op_result)
     elif op_type == OperationType.ACCOUNT_MERGE:
-        operation_object = operations.MergeOperation(tx_operation)
-    else:
-        operation_object = None
+        operation_object = operations.MergeOperation(tx_operation, op_result)
 
     return operation_object

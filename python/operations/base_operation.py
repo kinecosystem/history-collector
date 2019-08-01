@@ -1,14 +1,12 @@
 from abc import ABC, abstractmethod
-from utils import OperationType
+from enums import OperationType
 
 
 class BlockchainOperation(ABC):
-    def __init__(self, tx_operation):
+    def __init__(self, tx_operation, op_result):
         super().__init__()
         self.tx_operation = tx_operation
-
-    def get_type(self):
-        return OperationType(self.tx_operation['body']['type'])
+        self.op_result = op_result
 
     def get_source(self):
         if len(self.tx_operation['sourceAccount']) > 0 and 'ed25519' in self.tx_operation['sourceAccount'][0]:
@@ -16,23 +14,18 @@ class BlockchainOperation(ABC):
 
         return None
 
+    @abstractmethod
     def get_status(self):
-        return self._fetch_status_lambda()
+        pass
 
+    @abstractmethod
     def get_destination(self):
-        return self._fetch_destination_lambda()
+        pass
 
+    @abstractmethod
     def get_amount(self):
-        return self._fetch_amount_lambda()
-
-    @abstractmethod
-    def _fetch_status_lambda(self):
         pass
 
     @abstractmethod
-    def _fetch_destination_lambda(self):
-        pass
-
-    @abstractmethod
-    def _fetch_amount_lambda(self):
+    def get_type(self):
         pass

@@ -5,17 +5,21 @@ SUCCESSFUL_OPERATION = 'ACCOUNT_MERGE_SUCCESS'
 
 class MergeOperation(BlockchainOperation):
 
-    def __init__(self, tx_operation):
-        super().__init__(tx_operation)
+    def __init__(self, tx_operation, op_result):
+        super().__init__(tx_operation, op_result)
 
-    def _fetch_amount_lambda(self):
-        if self._fetch_status_lambda() == SUCCESSFUL_OPERATION:
-            return lambda x: x['tr']['accountMergeResult']['sourceAccountBalance']
+    def get_amount(self):
+
+        if self.get_status() == SUCCESSFUL_OPERATION:
+            return self.op_result['tr']['accountMergeResult']['sourceAccountBalance']
         else:
             return 0
 
-    def _fetch_destination_lambda(self):
-        return lambda x: x['body']['destination']
+    def get_destination(self):
+        return self.tx_operation['body']['destination']
 
-    def _fetch_status_lambda(self):
-        return lambda x: x['tr']['accountMergeResult']['code']
+    def get_status(self):
+        return self.op_result['tr']['accountMergeResult']['code']
+
+    def get_type(self):
+        return 'merge'

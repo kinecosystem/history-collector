@@ -20,7 +20,6 @@ import json
 from botocore import UNSIGNED
 from botocore.client import Config
 from botocore.exceptions import ClientError
-from kin_base.stellarxdr.StellarXDR_const import ASSET_TYPE_NATIVE
 from xdrparser import parser
 from adapters import *
 from utils import *
@@ -50,7 +49,7 @@ EMAIL_RECIPIENTS = os.environ.get('EMAIL_RECIPIENTS')
 LAMBDA_NAME = os.environ.get('LAMBDA_NAME')
 LAMBDA_REGION = os.environ.get('LAMBDA_REGION', 'us-east-1')
 
-RETRY_DELAY = os.environ.get('RETRY_DELAY')
+RETRY_DELAY = os.environ.get('RETRY_DELAY', 180)
 
 
 if FIRST_FILE and not verify_file_sequence(FIRST_FILE):
@@ -154,29 +153,27 @@ def write_data(storage_adapter, transactions, ledgers_dictionary, results_dictio
             tx_charged_fee = tx_result['feeCharged']
             tx_status = tx_result['result']['code']  # txSUCCESS/FAILED/BAD_AUTH etc
 
-            for op_order, (tx_operation, result_operation) in enumerate(zip(transaction['tx']['operations'], tx_result['result'].get('results', []))):
+            for op_order, (tx_operation, op_result) in enumerate(zip(transaction['tx']['operations'],
+                                                                     tx_result['result'].get('results', []))):
 
-                operation = get_operation_object(tx_operation)
-                if not operation:
+                operation_obj = get_operation_object(tx_operation, op_result)
+                if not operation_obj:
                     logging.warning('Unhandled operations ({type})- {operation}'.format(
                         type=OperationType(tx_operation['body']['type']), operation=tx_operation))
                     continue
 
-                # Skipping any payments that aren't native, if there are any
-                if tx_operation['body']['paymentOp']['asset']['type'] != ASSET_TYPE_NATIVE:
-                    continue
-
                 # If no operation source available, use the tx source
-                source = operation.get_source()
+                source = operation_obj.get_source()
                 if not source:
                     source = tx_account
 
                 is_signed_by_app = None  # TODO: next version
 
                 operations_list.append(storage_adapter.convert_operation(
-                    source, operation.get_destination(), operation.get_amount(), tx_order, tx_memo, tx_account,
-                    tx_account_sequence, tx_fee, tx_charged_fee, tx_status, tx_hash, op_order, operation.get_status(),
-                    operation.get_type(), ledger_timestamp, is_signed_by_app, file_name, ledger_sequence)
+                    source, operation_obj.get_destination(), operation_obj.get_amount(), tx_order, tx_memo, tx_account,
+                    tx_account_sequence, tx_fee, tx_charged_fee, tx_status, tx_hash, op_order,
+                    operation_obj.get_status(), operation_obj.get_type(), ledger_timestamp, is_signed_by_app, file_name,
+                    ledger_sequence)
                 )
 
     # Try saving data into storage as a single 'transaction'
@@ -261,6 +258,9 @@ def main():
 
             logging.info('Retrying in {} seconds'.format(RETRY_DELAY))
             time.sleep(RETRY_DELAY)
+
+            # Refresh the storage adapter just in case the exception was related to it
+            storage_adapter = get_storage_adapter()
             consecutive_failed_attempts += 1
 
 

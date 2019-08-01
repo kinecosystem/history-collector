@@ -14,6 +14,7 @@ class HistoryCollectorStorageAdapter(ABC):
         super().__init__()
         self.file_name = None
 
+
     @abstractmethod
     def get_last_file_sequence(self):
         pass
