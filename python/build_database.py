@@ -73,13 +73,14 @@ def main():
         # Grant the user access to the database
         cur.execute('GRANT SELECT, INSERT on operations TO python')
         cur.execute('GRANT SELECT, INSERT, UPDATE on lastfile TO python')
+        cur.execute('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO python')
 
-        cur.execute('CREATE INDEX by_account ON transactions USING btree (account, account_sequence);')
-        cur.execute('CREATE INDEX by_source ON transactions USING btree (source);')
-        cur.execute('CREATE INDEX by_destination ON transactions USING btree (destination);')
-        cur.execute('CREATE INDEX by_hash ON transactions USING btree (tx_hash);')
-        cur.execute('CREATE INDEX by_op_type ON transactions USING btree (op_type)')
-        cur.execute('CREATE UNIQUE INDEX by_op_in_tx_in_ledger ON transactions '
+        cur.execute('CREATE INDEX by_account ON operations USING btree (tx_account, tx_account_sequence);')
+        cur.execute('CREATE INDEX by_source ON operations USING btree (source);')
+        cur.execute('CREATE INDEX by_destination ON operations USING btree (destination);')
+        cur.execute('CREATE INDEX by_hash ON operations USING btree (tx_hash);')
+        cur.execute('CREATE INDEX by_op_type ON operations USING btree (op_type)')
+        cur.execute('CREATE UNIQUE INDEX by_op_in_tx_in_ledger ON operations '
                     'USING btree (ledger_sequence, tx_hash, op_order);')
 
         # TODO: When the is_signed_by_app will be implemented, probably need to create a table for known apps accounts

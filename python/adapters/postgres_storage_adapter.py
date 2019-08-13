@@ -85,7 +85,7 @@ class PostgresStorageAdapter(HistoryCollectorStorageAdapter):
             'tx_account': 'varchar(64) NOT NULL',
             'tx_account_sequence': 'BIGINT not NULL',
             'tx_fee': 'INT not NULL',
-            'tx_fee_charged': 'INT not NULL',
+            'tx_charged_fee': 'INT not NULL',
             'tx_status': 'varchar(32) NOT NULL',
             'tx_hash': 'varchar(64) not NULL',
             'op_order': 'INT not NULL',
