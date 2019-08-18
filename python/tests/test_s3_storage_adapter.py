@@ -5,6 +5,7 @@ import random
 import string
 from unittest.mock import patch
 from adapters.s3_storage_adapter import S3StorageAdapter, COMPLETED_LEDGERS_DIR_NAME
+from adapters.hc_storage_adapter import HistoryCollectorStorageError
 from datetime import datetime
 
 
@@ -42,39 +43,21 @@ def test_get_last_file_sequence_file_not_found(test_bucket, aws_access_key_id, a
     try:
         S3StorageAdapter(test_bucket, 'key_that_should_not_exist', aws_access_key_id, aws_secret_access_key, test_region)
     except Exception as e:
-        assert 'NoSuchKey' in str(e)
-    else:
-        assert False
+        assert isinstance(e, HistoryCollectorStorageError)
 
 
-def test_save_payments(s3_storage_adapter_instance: S3StorageAdapter):
+def test_save_operations(s3_storage_adapter_instance: S3StorageAdapter):
     s3_storage_adapter_instance.operations_to_save = []
     test_list = ['test']
-    s3_storage_adapter_instance._save_payments(test_list)
+    s3_storage_adapter_instance._save_operations(test_list)
     assert s3_storage_adapter_instance.operations_to_save == test_list
 
 
-def test_save_payments_empty(s3_storage_adapter_instance: S3StorageAdapter):
+def test_save_operations_empty(s3_storage_adapter_instance: S3StorageAdapter):
     s3_storage_adapter_instance.operations_to_save = []
     test_list = []
-    s3_storage_adapter_instance._save_payments(test_list)
+    s3_storage_adapter_instance._save_operations(test_list)
     assert s3_storage_adapter_instance.operations_to_save == test_list
-    pass
-
-
-def test_save_creations(s3_storage_adapter_instance: S3StorageAdapter):
-    s3_storage_adapter_instance.operations_to_save = []
-    test_list = ['test']
-    s3_storage_adapter_instance._save_creations(test_list)
-    assert s3_storage_adapter_instance.operations_to_save == test_list
-
-
-def test_save_creations_empty(s3_storage_adapter_instance: S3StorageAdapter):
-    s3_storage_adapter_instance.operations_to_save = []
-    test_list = []
-    s3_storage_adapter_instance._save_creations(test_list)
-    assert s3_storage_adapter_instance.operations_to_save == test_list
-    pass
 
 
 def test_save(s3_storage_adapter_instance : S3StorageAdapter):
@@ -85,7 +68,7 @@ def test_save(s3_storage_adapter_instance : S3StorageAdapter):
     s3_storage_adapter_instance._rollback()
 
     # Test
-    s3_storage_adapter_instance.save([{'type': 'payment'}], [{'type': 'creation'}], ledger_name)
+    s3_storage_adapter_instance.save([{'type': 'payment'}], ledger_name)
 
     assert ledger_name == s3_storage_adapter_instance.get_last_file_sequence()
     list_of_files = __get_files_in_key(s3_storage_adapter_instance,
@@ -115,7 +98,7 @@ def test_save_empty_file(s3_storage_adapter_instance : S3StorageAdapter):
     s3_storage_adapter_instance._rollback()
 
     # Test
-    s3_storage_adapter_instance.save([], [], ledger_name)
+    s3_storage_adapter_instance.save([], ledger_name)
 
     assert ledger_name == s3_storage_adapter_instance.get_last_file_sequence()
     list_of_files = __get_files_in_key(s3_storage_adapter_instance,
@@ -147,7 +130,7 @@ def test_rollback(s3_storage_adapter_instance: S3StorageAdapter):
 
     with patch('botocore.client.BaseClient._make_api_call', new=__mock_make_api_call_fail_when_posting_complete):
         with pytest.raises(Exception):
-            s3_storage_adapter_instance.save([{'type': 'payment'}], [{'type': 'creation'}], ledger_name)
+            s3_storage_adapter_instance.save([{'type': 'payment'}], ledger_name)
 
     # At this point a roll back should be invoked, so we need to make sure there are no files in the folders
     assert len(__get_files_in_key(s3_storage_adapter_instance, ledger_key_location_on_s3)) == 0
@@ -156,26 +139,14 @@ def test_rollback(s3_storage_adapter_instance: S3StorageAdapter):
     s3_storage_adapter_instance.operations_to_save = []
 
 
-def test_convert_payment(s3_storage_adapter_instance : S3StorageAdapter):
+def test_convert_operation(s3_storage_adapter_instance : S3StorageAdapter):
 
-    payment = __generate_row_based_on_schema(s3_storage_adapter_instance.payments_output_schema())
-    payment['timestamp'] = 1535594286
-    del payment['type']
-    returned_dict = s3_storage_adapter_instance.convert_payment(*payment.values())
-    payment.update({'timestamp': datetime.strptime('2018-08-30 01:58:06', '%Y-%m-%d %H:%M:%S'),
-                    'type': 'payment'})
-    assert returned_dict == payment
-
-
-def test_convert_creations(s3_storage_adapter_instance: S3StorageAdapter):
-
-    creation = __generate_row_based_on_schema(s3_storage_adapter_instance.creations_output_schema())
-    creation['timestamp'] = 1535594286
-    del creation['type']
-    returned_dict = s3_storage_adapter_instance.convert_creation(*creation.values())
-    creation.update({'timestamp': datetime.strptime('2018-08-30 01:58:06', '%Y-%m-%d %H:%M:%S'),
-                     'type': 'creation'})
-    assert returned_dict == creation
+    operation = __generate_row_based_on_schema(s3_storage_adapter_instance.operation_output_schema())
+    operation['timestamp'] = 1535594286
+    returned_dict = s3_storage_adapter_instance.convert_operation(*operation.values())
+    operation['timestamp'] = datetime.strptime('2018-08-30 01:58:06', '%Y-%m-%d %H:%M:%S')
+    operation['tx_memo'] = '"{}"'.format(operation['tx_memo'])
+    assert returned_dict == operation
 
 
 def __put_file_on_s3(s3_storage_adapter_instance: S3StorageAdapter, key, string):
