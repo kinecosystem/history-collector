@@ -165,7 +165,10 @@ def write_data(storage_adapter, transactions, ledgers_dictionary, results_dictio
                         destination = tx_operation['body']['paymentOp']['destination']['ed25519']
                         amount = tx_operation['body']['paymentOp']['amount']
                         if result_operation:
-                            op_status = result_operation['tr']['paymentResult']['code']
+                            try:
+                                op_status = result_operation['tr']['paymentResult']['code']
+                            except Exception:
+                                op_status = "not_exists"
 
                         # Override the tx source with the operation source if it exists
                         try:
