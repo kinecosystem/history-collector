@@ -13,7 +13,13 @@ class PaymentOperation(BlockchainOperation):
         return self.tx_operation['body']['paymentOp']['destination']['ed25519']
 
     def get_status(self):
-        return self.op_result['tr']['paymentResult']['code']
+
+        try:
+            status = self.op_result['tr']['paymentResult']['code']
+        except Exception:
+            status = "unknown"
+
+        return status
 
     def get_type(self):
         return 'payment'
