@@ -100,7 +100,7 @@ class S3StorageAdapter(HistoryCollectorStorageAdapter):
             raise
 
     def convert_operation(self, source, destination, amount, tx_order, tx_memo, tx_account, tx_account_sequence,
-                          tx_fee, tx_charged_fee, tx_status, tx_hash, op_order, op_status, op_type, timestamp,
+                          tx_fee, tx_charged_fee, tx_status, tx_hash, op_index, op_status, op_type, timestamp,
                           is_signed_by_app, ledger_file_name, ledger_sequence):
 
         operation = dict.fromkeys(self.operation_output_schema())
@@ -115,7 +115,7 @@ class S3StorageAdapter(HistoryCollectorStorageAdapter):
         operation['tx_charged_fee'] = tx_charged_fee
         operation['tx_status'] = tx_status
         operation['tx_hash'] = tx_hash
-        operation['op_order'] = op_order
+        operation['op_index'] = op_index
         operation['op_status'] = op_status
         operation['op_type'] = op_type
         operation['timestamp'] = datetime.utcfromtimestamp(timestamp)

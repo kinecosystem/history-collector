@@ -153,7 +153,7 @@ def write_data(storage_adapter, transactions, ledgers_dictionary, results_dictio
             tx_charged_fee = tx_result['feeCharged']
             tx_status = tx_result['result']['code']  # txSUCCESS/FAILED/BAD_AUTH etc
 
-            for op_order, (tx_operation, op_result) in enumerate(zip(transaction['tx']['operations'],
+            for op_index, (tx_operation, op_result) in enumerate(zip(transaction['tx']['operations'],
                                                                      tx_result['result'].get('results', []))):
 
                 operation_obj = get_operation_object(tx_operation, op_result)
@@ -171,7 +171,7 @@ def write_data(storage_adapter, transactions, ledgers_dictionary, results_dictio
 
                 operations_list.append(storage_adapter.convert_operation(
                     source, operation_obj.get_destination(), operation_obj.get_amount(), tx_order, tx_memo, tx_account,
-                    tx_account_sequence, tx_fee, tx_charged_fee, tx_status, tx_hash, op_order,
+                    tx_account_sequence, tx_fee, tx_charged_fee, tx_status, tx_hash, op_index,
                     operation_obj.get_status(), operation_obj.get_type(), ledger_timestamp, is_signed_by_app, file_name,
                     ledger_sequence)
                 )

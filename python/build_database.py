@@ -81,7 +81,7 @@ def main():
         cur.execute('CREATE INDEX by_hash ON operations USING btree (tx_hash);')
         cur.execute('CREATE INDEX by_op_type ON operations USING btree (op_type)')
         cur.execute('CREATE UNIQUE INDEX by_op_in_tx_in_ledger ON operations '
-                    'USING btree (ledger_sequence, tx_hash, op_order);')
+                    'USING btree (ledger_sequence, tx_hash, op_index);')
 
         # TODO: When the is_signed_by_app will be implemented, probably need to create a table for known apps accounts
 

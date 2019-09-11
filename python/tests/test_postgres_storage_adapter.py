@@ -197,7 +197,7 @@ def __generate_row_based_on_schema(schema, amount_of_rows=1):
             else:
                 raise NotImplementedError('sql type has no value generator')
 
-            if column == 'op_order':
+            if column == 'op_index':
                 value = i
 
             if column == 'ledger_sequence':

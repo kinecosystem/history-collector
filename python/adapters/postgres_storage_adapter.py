@@ -44,7 +44,7 @@ class PostgresStorageAdapter(HistoryCollectorStorageAdapter):
         self.conn.rollback()
 
     def convert_operation(self, source, destination, amount, tx_order, tx_memo, tx_account, tx_account_sequence,
-                          tx_fee, tx_charged_fee, tx_status, tx_hash, op_order, op_status, op_type, timestamp,
+                          tx_fee, tx_charged_fee, tx_status, tx_hash, op_index, op_status, op_type, timestamp,
                           is_signed_by_app, ledger_file_name, ledger_sequence):
 
         operation = dict.fromkeys(self.operation_output_schema())
@@ -59,7 +59,7 @@ class PostgresStorageAdapter(HistoryCollectorStorageAdapter):
         operation['tx_charged_fee'] = tx_charged_fee
         operation['tx_status'] = tx_status
         operation['tx_hash'] = tx_hash
-        operation['op_order'] = op_order
+        operation['op_index'] = op_index
         operation['op_status'] = op_status
         operation['op_type'] = op_type
         operation['timestamp'] = datetime.utcfromtimestamp(timestamp)
@@ -77,8 +77,8 @@ class PostgresStorageAdapter(HistoryCollectorStorageAdapter):
         """
 
         return {
-            'source': 'varchar(64) not NULL',
-            'destination': 'varchar(64) not NULL',
+            'source': 'varchar(56) not NULL',
+            'destination': 'varchar(56) not NULL',
             'amount': 'BIGINT not NULL',
             'tx_order': 'INT not NULL',
             'tx_memo': 'varchar(28)',
@@ -88,7 +88,7 @@ class PostgresStorageAdapter(HistoryCollectorStorageAdapter):
             'tx_charged_fee': 'INT not NULL',
             'tx_status': 'varchar(32) NOT NULL',
             'tx_hash': 'varchar(64) not NULL',
-            'op_order': 'INT not NULL',
+            'op_index': 'INT not NULL',
             'op_status': 'varchar(32) NOT NULL',
             'op_type': 'varchar(32) NOT NULL',
             'timestamp': 'TIMESTAMP without time zone not NULL',

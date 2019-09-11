@@ -33,7 +33,7 @@ class HistoryCollectorStorageAdapter(ABC):
 
     @abstractmethod
     def convert_operation(self, source, destination, amount, tx_order, tx_memo, tx_account, tx_account_sequence,
-                          tx_fee, tx_charged_fee, tx_status, tx_hash, op_order, op_status, op_type, timestamp,
+                          tx_fee, tx_charged_fee, tx_status, tx_hash, op_index, op_status, op_type, timestamp,
                           is_signed_by_app, ledger_file_name, ledger_sequence):
         pass
 
@@ -68,7 +68,7 @@ class HistoryCollectorStorageAdapter(ABC):
             'tx_charged_fee': int,
             'tx_status': str,
             'tx_hash': str,
-            'op_order': int,
+            'op_index': int,
             'op_status': str,
             'op_type': str,
             'timestamp': datetime,
