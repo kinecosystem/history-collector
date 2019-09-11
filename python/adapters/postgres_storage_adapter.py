@@ -14,7 +14,7 @@ class PostgresStorageAdapter(HistoryCollectorStorageAdapter):
         self.conn = psycopg2.connect("postgresql://python:{password}@{host}:5432/{database}".format(
             password=python_password, host=postgres_host, database=database))
         self.cursor = self.conn.cursor()
-        logging.info('Successfully connected to the database')
+        logging.debug('Successfully connected to the database')
 
     def get_last_file_sequence(self):
 
@@ -25,24 +25,14 @@ class PostgresStorageAdapter(HistoryCollectorStorageAdapter):
 
         return last_file
 
-    def _save_payments(self, payments: list):
-        if payments:
-            payments_columns = self.payments_output_schema().keys()
+    def _save_operations(self, operations: list):
+        if operations:
+            operation_columns = self.operation_output_schema().keys()
             execute_values(self.cursor,
-                           'INSERT INTO payments ({columns}) VALUES %s'.format(columns=', '.join(payments_columns)),
-                           payments,
+                           'INSERT INTO operations ({columns}) VALUES %s'.format(columns=', '.join(operation_columns)),
+                           operations,
                            template='({mapping})'.format(
-                               mapping=', '.join(['%({})s'.format(column) for column in payments_columns])
-                           ))
-
-    def _save_creations(self, creations: list):
-        if creations:
-            creations_columns = self.creations_output_schema().keys()
-            execute_values(self.cursor,
-                           'INSERT INTO creations ({columns}) VALUES %s'.format(columns=', '.join(creations_columns)),
-                           creations,
-                           template='({mapping})'.format(
-                               mapping=', '.join(['%({})s'.format(column) for column in creations_columns])
+                               mapping=', '.join(['%({})s'.format(column) for column in operation_columns])
                            ))
 
     def _commit(self):
@@ -53,44 +43,36 @@ class PostgresStorageAdapter(HistoryCollectorStorageAdapter):
     def _rollback(self):
         self.conn.rollback()
 
-    def convert_payment(self, source, destination, amount, memo, tx_fee, tx_charged_fee, op_index, tx_status, op_status,
-                        tx_hash, timestamp):
-        payment = dict.fromkeys(self.payments_output_schema())
-        payment['source'] = source
-        payment['destination'] = destination
-        payment['amount'] = amount
-        payment['memo_text'] = memo
-        payment['fee'] = tx_fee
-        payment['fee_charged'] = tx_charged_fee
-        payment['operation_index'] = op_index
-        payment['tx_status'] = tx_status
-        payment['op_status'] = op_status
-        payment['hash'] = tx_hash
-        payment['time'] = datetime.utcfromtimestamp(timestamp)
+    def convert_operation(self, source, destination, amount, tx_order, tx_memo, tx_account, tx_account_sequence,
+                          tx_fee, tx_charged_fee, tx_status, tx_hash, op_index, op_status, op_type, timestamp,
+                          is_signed_by_app, ledger_file_name, ledger_sequence):
 
-        return payment
+        operation = dict.fromkeys(self.operation_output_schema())
+        operation['source'] = source
+        operation['destination'] = destination
+        operation['amount'] = amount
+        operation['tx_order'] = tx_order
+        operation['tx_memo'] = tx_memo
+        operation['tx_account'] = tx_account
+        operation['tx_account_sequence'] = tx_account_sequence
+        operation['tx_fee'] = tx_fee
+        operation['tx_charged_fee'] = tx_charged_fee
+        operation['tx_status'] = tx_status
+        operation['tx_hash'] = tx_hash
+        operation['op_index'] = op_index
+        operation['op_status'] = op_status
+        operation['op_type'] = op_type
+        operation['timestamp'] = datetime.utcfromtimestamp(timestamp)
+        operation['is_signed_by_app'] = is_signed_by_app
+        operation['ledger_file_name'] = ledger_file_name
+        operation['ledger_sequence'] = ledger_sequence
 
-    def convert_creation(self, source, destination, balance, memo, tx_fee, tx_charged_fee, op_index, tx_status,
-                         op_status, tx_hash, timestamp):
-        creation = dict.fromkeys(self.creations_output_schema())
-        creation['source'] = source
-        creation['destination'] = destination
-        creation['starting_balance'] = balance
-        creation['memo_text'] = memo
-        creation['fee'] = tx_fee
-        creation['fee_charged'] = tx_charged_fee
-        creation['operation_index'] = op_index
-        creation['tx_status'] = tx_status
-        creation['op_status'] = op_status
-        creation['hash'] = tx_hash
-        creation['time'] = datetime.utcfromtimestamp(timestamp)
-
-        return creation
+        return operation
 
     @staticmethod
-    def payments_output_schema():
+    def operation_output_schema():
         """
-        :return: A dictionary of columns saved by the History collector.
+        :return: A dictionary of columns saved by the History collector.\
           Key - name, Value - string literal of postgres type
         """
 
@@ -98,33 +80,20 @@ class PostgresStorageAdapter(HistoryCollectorStorageAdapter):
             'source': 'varchar(56) not NULL',
             'destination': 'varchar(56) not NULL',
             'amount': 'BIGINT not NULL',
-            'memo_text': 'varchar(28)',
-            'fee': 'INT not NULL',
-            'fee_charged': 'INT not NULL',
-            'operation_index': 'INT not NULL',
-            'tx_status': 'text',
-            'op_status': 'text',
-            'hash': 'varchar(64) not NULL',
-            'time': 'TIMESTAMP not NULL'
+            'tx_order': 'INT not NULL',
+            'tx_memo': 'varchar(28)',
+            'tx_account': 'varchar(64) NOT NULL',
+            'tx_account_sequence': 'BIGINT not NULL',
+            'tx_fee': 'INT not NULL',
+            'tx_charged_fee': 'INT not NULL',
+            'tx_status': 'varchar(32) NOT NULL',
+            'tx_hash': 'varchar(64) not NULL',
+            'op_index': 'INT not NULL',
+            'op_status': 'varchar(32) NOT NULL',
+            'op_type': 'varchar(32) NOT NULL',
+            'timestamp': 'TIMESTAMP without time zone not NULL',
+            'is_signed_by_app': 'BOOLEAN',
+            'ledger_file_name': 'varchar(10) not NULL',
+            'ledger_sequence': 'INT not NULL',
         }
 
-    @staticmethod
-    def creations_output_schema():
-        """
-        :return: A dictionary of columns saved by the History collector.
-          Key - name, Value - string literal of postgres type
-        """
-
-        return {
-            'source': 'varchar(56) not NULL',
-            'destination': 'varchar(56) not NULL',
-            'starting_balance': 'BIGINT not NULL',
-            'memo_text': 'varchar(28)',
-            'fee': 'INT not NULL',
-            'fee_charged': 'INT not NULL',
-            'operation_index': 'INT not NULL',
-            'tx_status': 'text',
-            'op_status': 'text',
-            'hash': 'varchar(64) not NULL',
-            'time': 'TIMESTAMP not NULL'
-        }

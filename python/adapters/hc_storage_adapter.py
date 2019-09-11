@@ -14,16 +14,13 @@ class HistoryCollectorStorageAdapter(ABC):
         super().__init__()
         self.file_name = None
 
+
     @abstractmethod
     def get_last_file_sequence(self):
         pass
 
     @abstractmethod
-    def _save_payments(self, payments):
-        pass
-
-    @abstractmethod
-    def _save_creations(self, creations):
+    def _save_operations(self, operations):
         pass
 
     @abstractmethod
@@ -35,20 +32,15 @@ class HistoryCollectorStorageAdapter(ABC):
         pass
 
     @abstractmethod
-    def convert_payment(self, source, destination, amount, memo, tx_fee, tx_charged_fee, op_index, tx_status, op_status,
-                        tx_hash, timestamp):
+    def convert_operation(self, source, destination, amount, tx_order, tx_memo, tx_account, tx_account_sequence,
+                          tx_fee, tx_charged_fee, tx_status, tx_hash, op_index, op_status, op_type, timestamp,
+                          is_signed_by_app, ledger_file_name, ledger_sequence):
         pass
 
-    @abstractmethod
-    def convert_creation(self, source, destination, balance, memo, tx_fee, tx_charged_fee, op_index, tx_status,
-                         op_status, tx_hash, timestamp):
-        pass
-
-    def save(self, payments_operations_list: list, creations_operations_list: list, file_name: str):
+    def save(self, operations_list: list, file_name: str):
         try:
             self.file_name = file_name
-            self._save_payments(payments_operations_list)
-            self._save_creations(creations_operations_list)
+            self._save_operations(operations_list)
             self._commit()
             logging.info('Successfully stored the data of file: {} to storage'.format(file_name))
 
@@ -59,7 +51,7 @@ class HistoryCollectorStorageAdapter(ABC):
             raise
 
     @staticmethod
-    def payments_output_schema():
+    def operation_output_schema():
         """
         :return: A dictionary of columns saved by the History collector. Key - name, Value - type
         """
@@ -68,32 +60,19 @@ class HistoryCollectorStorageAdapter(ABC):
             'source': str,
             'destination': str,
             'amount': int,
-            'memo': str,
+            'tx_order': int,
+            'tx_memo': str,
+            'tx_account': str,
+            'tx_account_sequence': int,
             'tx_fee': int,
             'tx_charged_fee': int,
-            'op_index': int,
             'tx_status': str,
-            'op_status': str,
             'tx_hash': str,
-            'timestamp': datetime
-        }
-
-    @staticmethod
-    def creations_output_schema():
-        """
-        :return: A dictionary of columns saved by the History collector. Key - name, Value - type
-        """
-
-        return {
-            'source': str,
-            'destination': str,
-            'starting_balance': int,
-            'memo': str,
-            'tx_fee': int,
-            'tx_charged_fee': int,
             'op_index': int,
-            'tx_status': str,
             'op_status': str,
-            'tx_hash': str,
-            'timestamp': datetime
+            'op_type': str,
+            'timestamp': datetime,
+            'is_signed_by_app': bool,
+            'ledger_file_name': str,
+            'ledger_sequence': str,
         }

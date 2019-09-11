@@ -22,6 +22,7 @@ services:
       FIRST_FILE: '0000003f'
       NETWORK_PASSPHRASE: 'Kin Mainnet ; December 2018'
       MAX_RETRIES: 5
+      RETRY_DELAY: 180
       BUCKET_NAME: 'stellar-core-kin-fed-e50b'
       CORE_DIRECTORY: ''
       LOG_LEVEL: 'INFO'
