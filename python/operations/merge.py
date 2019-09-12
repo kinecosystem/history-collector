@@ -16,7 +16,7 @@ class MergeOperation(BlockchainOperation):
             return 0
 
     def get_destination(self):
-        return self.tx_operation['body']['destination']
+        return self.tx_operation['body']['destination']['ed25519']
 
     def get_status(self):
         return self.op_result['tr']['accountMergeResult']['code']
