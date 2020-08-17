@@ -9,9 +9,7 @@ WORKDIR /opt/history-collector
 # Installing pandas
 RUN apk add --no-cache python3-dev libstdc++ && \
     apk add --no-cache g++ && \
-    ln -s /usr/include/locale.h /usr/include/xlocale.h && \
-    pip3 install numpy && \
-    pip3 install pandas==0.24.2
+    ln -s /usr/include/locale.h /usr/include/xlocale.h
 
 # Copy the pipfiles
 COPY Pipfile* ./

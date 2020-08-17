@@ -53,13 +53,14 @@ class PostgresStorageAdapter(HistoryCollectorStorageAdapter):
     def _rollback(self):
         self.conn.rollback()
 
-    def convert_payment(self, source, destination, amount, memo, tx_fee, tx_charged_fee, op_index, tx_status, op_status,
+    def convert_payment(self, source, destination, amount, memo, app_index, tx_fee, tx_charged_fee, op_index, tx_status, op_status,
                         tx_hash, timestamp):
         payment = dict.fromkeys(self.payments_output_schema())
         payment['source'] = source
         payment['destination'] = destination
         payment['amount'] = amount
         payment['memo_text'] = memo
+        payment['app_index'] = app_index
         payment['fee'] = tx_fee
         payment['fee_charged'] = tx_charged_fee
         payment['operation_index'] = op_index
@@ -99,6 +100,7 @@ class PostgresStorageAdapter(HistoryCollectorStorageAdapter):
             'destination': 'varchar(56) not NULL',
             'amount': 'BIGINT not NULL',
             'memo_text': 'varchar(28)',
+            'app_index': 'INT',
             'fee': 'INT not NULL',
             'fee_charged': 'INT not NULL',
             'operation_index': 'INT not NULL',

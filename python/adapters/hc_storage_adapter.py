@@ -35,7 +35,7 @@ class HistoryCollectorStorageAdapter(ABC):
         pass
 
     @abstractmethod
-    def convert_payment(self, source, destination, amount, memo, tx_fee, tx_charged_fee, op_index, tx_status, op_status,
+    def convert_payment(self, source, destination, amount, memo, app_index, tx_fee, tx_charged_fee, op_index, tx_status, op_status,
                         tx_hash, timestamp):
         pass
 

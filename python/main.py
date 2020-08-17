@@ -147,6 +147,15 @@ def write_data(storage_adapter, transactions, ledgers_dictionary, results_dictio
                 else:
                     continue
 
+            app_index = None
+            memo_hash = transaction['tx']['memo']['hash']
+            if memo_hash is not None:
+                try:
+                    app_index = get_app_index(memo_hash)
+                except Exception as e:
+                    app_index = None
+                    logging.info("failed: %s", e)
+
             tx_hash = transaction['hash']
             tx_fee = transaction['tx']['fee']
             tx_charged_fee = results['feeCharged']
@@ -177,7 +186,7 @@ def write_data(storage_adapter, transactions, ledgers_dictionary, results_dictio
                             pass
 
                         payments_operations_list.append(
-                            storage_adapter.convert_payment(source, destination, amount, memo, tx_fee,
+                            storage_adapter.convert_payment(source, destination, amount, memo, app_index, tx_fee,
                                                             tx_charged_fee, op_index, tx_status, op_status,
                                                             tx_hash, timestamp))
 
@@ -390,6 +399,33 @@ def get_storage_adapter():
 
     return storage_adapter
 
+def get_app_index(hash_memo):
+    data = bytearray.fromhex(hash_memo)
+    if len(data) != 32:
+        logging.info("unexpected len: %s", len(data))
+        return None
+
+    # check magic byte
+    if data[0] & 0x3 != 0x1:
+        logging.info("invalid magic byte")
+        return None
+
+    # check version
+    version = (data[0] & 0x1c) >> 2
+    if version > 1:
+        logging.info("invalid version")
+        return None
+
+    # check transaction type
+    tx_type = (data[0] >> 5) | (data[1] & 0x3) << 3
+    if tx_type == 0:
+        logging.info("invalid tx-type")
+        return None
+
+    a = data[1] >> 2
+    b = data[2] << 6
+    c = (data[3] & 0x3) << 14
+    return a | b | c
 
 if __name__ == '__main__':
     main()
