@@ -65,6 +65,7 @@ def main():
                     'destination varchar(56) not NULL,'
                     'amount FLOAT not NULL,'
                     'memo_text varchar(28),'
+                    'app_index INT,'
                     'fee INT not NULL,'
                     'fee_charged INT not NULL,'
                     'operation_index INT not NULL,'
